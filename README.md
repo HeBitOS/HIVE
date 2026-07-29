@@ -58,6 +58,20 @@ against a local HBOS checkout with:
 make integration-test HBOS_DIR=/path/to/HBOS
 ```
 
+## Run
+
+Keep an HBOS checkout next to this repository, then build and start the HIVE
+sources and applications directly in QEMU:
+
+```sh
+make run
+```
+
+`make start` is an alias for `make run`; use `make run-uefi` for UEFI or
+`make image` to build without starting QEMU. If HBOS is elsewhere, pass
+`HBOS_DIR=/path/to/HBOS`. Integration artifacts are kept under
+`build/hbos/` in this repository.
+
 ## Synchronizing the transitional mirror
 
 Until HIVE becomes a ring3 service, import the HIVE-owned runtime and current
