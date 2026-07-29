@@ -1,7 +1,8 @@
 # Source synchronization
 
 The initial HIVE source import was taken from HBOS commit `2febb64` on
-2026-07-28.
+2026-07-28. The mirror was refreshed from the HBOS `main` worktree on
+2026-07-29 for HIVE `0.1-beta5-gui.3` / Toolkit API 1.3.
 
 ## Ownership
 
@@ -18,6 +19,19 @@ The initial HIVE source import was taken from HBOS commit `2febb64` on
 While the runtime is still linked into HBOS, functional runtime changes must be
 kept compatible in both repositories. New applications must target only
 `app/include/`; they must not depend on the transitional runtime mirror.
+
+Run the checked-in synchronization helper from this repository:
+
+```sh
+make sync HBOS_DIR=/path/to/HBOS
+make test
+make integration-test HBOS_DIR=/path/to/HBOS
+```
+
+The helper imports the public SDK, runtime mirror, GUI resources and generators,
+host tests, documentation, and HBOS-owned ABI/libc header snapshots. It
+intentionally excludes `src/gui/nogui.c`, which is the HBOS kernel fallback
+implementation rather than part of HIVE.
 
 The mirror ends when the desktop loop, compositor, resource loader, and window
 server run as a ring3 service against a versioned HBOS Kernel SDK. At that point

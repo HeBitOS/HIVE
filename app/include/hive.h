@@ -13,7 +13,10 @@
 #define HIVE_NAME "HIVE"
 #define HIVE_API_MAJOR HAX_UI_ABI_MAJOR
 #define HIVE_API_MINOR HAX_UI_ABI_MINOR
-#define HIVE_VERSION_STRING "1.1"
+#define HIVE_API_VERSION_STRING "1.3"
+#define HIVE_GUI_REVISION 3u
+#define HIVE_VERSION_STRING "0.1-beta5-gui.3"
+#define HIVE_VERSION_TAG "HIVE " HIVE_VERSION_STRING
 
 /** 声明一个由 HIVE 桌面异步启动的独立窗口应用。 */
 #define HIVE_APP(name, description) \
@@ -28,6 +31,12 @@ typedef hax_ui_layout_t hive_layout_t;
 typedef hax_ui_theme_t hive_theme_t;
 typedef hax_widget_t hive_widget_t;
 typedef hax_ui_t hive_ui_t;
+typedef hax_window_t hive_window_t;
+typedef hax_window_caps_t hive_window_caps_t;
+typedef hax_window_state_t hive_window_state_t;
+typedef hax_window_event_t hive_window_event_t;
+typedef hax_draw_command_t hive_draw_command_t;
+typedef hax_rect_t hive_window_rect_t;
 
 #define HIVE_WIDGET_LABEL     HAX_WIDGET_LABEL
 #define HIVE_WIDGET_BUTTON    HAX_WIDGET_BUTTON
@@ -36,6 +45,11 @@ typedef hax_ui_t hive_ui_t;
 #define HIVE_WIDGET_LIST      HAX_WIDGET_LIST
 #define HIVE_WIDGET_PROGRESS  HAX_WIDGET_PROGRESS
 #define HIVE_WIDGET_SLIDER    HAX_WIDGET_SLIDER
+#define HIVE_WIDGET_SCROLLBAR HAX_WIDGET_SCROLLBAR
+#define HIVE_WIDGET_MENU      HAX_WIDGET_MENU
+#define HIVE_WIDGET_IMAGE     HAX_WIDGET_IMAGE
+#define HIVE_WIDGET_CANVAS    HAX_WIDGET_CANVAS
+#define HIVE_WIDGET_PANEL     HAX_WIDGET_PANEL
 
 #define HIVE_EVENT_NONE       HAX_UI_EVENT_NONE
 #define HIVE_EVENT_CLICK      HAX_UI_EVENT_CLICK
@@ -54,6 +68,7 @@ typedef hax_ui_t hive_ui_t;
 #define hive_ui_init              hax_ui_init
 #define hive_ui_clear             hax_ui_clear_widgets
 #define hive_ui_widget            hax_ui_widget
+#define hive_ui_add_panel         hax_ui_add_panel
 #define hive_ui_add_label         hax_ui_add_label
 #define hive_ui_add_button        hax_ui_add_button
 #define hive_ui_add_textbox       hax_ui_add_textbox
@@ -61,15 +76,30 @@ typedef hax_ui_t hive_ui_t;
 #define hive_ui_add_list          hax_ui_add_list
 #define hive_ui_add_progress      hax_ui_add_progress
 #define hive_ui_add_slider        hax_ui_add_slider
+#define hive_ui_add_scrollbar     hax_ui_add_scrollbar
+#define hive_ui_add_menu          hax_ui_add_menu
+#define hive_ui_add_image         hax_ui_add_image
+#define hive_ui_add_canvas        hax_ui_add_canvas
 #define hive_ui_set_enabled       hax_ui_set_enabled
 #define hive_ui_set_visible       hax_ui_set_visible
+#define hive_ui_set_parent        hax_ui_set_parent
+#define hive_ui_parent            hax_ui_parent
+#define hive_ui_set_rect          hax_ui_set_rect
+#define hive_ui_get_rect          hax_ui_get_rect
+#define hive_ui_remove            hax_ui_remove_widget
 #define hive_ui_set_text          hax_ui_set_text
 #define hive_ui_set_value         hax_ui_set_value
 #define hive_ui_get_value         hax_ui_get_value
+#define hive_textbox_selection    hax_ui_textbox_selection
+#define hive_textbox_clear_selection hax_ui_textbox_clear_selection
+#define hive_textbox_select       hax_ui_textbox_select
+#define hive_textbox_select_all   hax_ui_textbox_select_all
+#define hive_textbox_copy_selection hax_ui_textbox_copy_selection
 #define hive_ui_focus_next        hax_ui_focus_next
 #define hive_ui_focus_prev        hax_ui_focus_prev
 #define hive_ui_dispatch          hax_ui_dispatch
 #define hive_ui_poll              hax_ui_poll
+#define hive_ui_poll_window       hax_ui_poll_window
 #define hive_ui_draw              hax_ui_draw
 
 #define hive_window_open          hax_win_open
@@ -80,6 +110,19 @@ typedef hax_ui_t hive_ui_t;
 #define hive_window_present       hax_win_present
 #define hive_window_poll          hax_win_poll
 #define hive_window_close         hax_win_close
+#define hive_window_blit          hax_win_blit
+
+/* HIVE 显式窗口 API。旧 hive_window_* 保持单窗口兼容语义。 */
+#define hive_window_query         hax_window_query
+#define hive_window_create        hax_window_create
+#define hive_window_get_state     hax_window_get_state
+#define hive_window_set_title     hax_window_set_title
+#define hive_window_set_geometry  hax_window_set_geometry
+#define hive_window_set_state     hax_window_set_state
+#define hive_window_draw          hax_window_draw
+#define hive_window_present_rect  hax_window_present
+#define hive_window_poll_event    hax_window_poll
+#define hive_window_destroy       hax_window_close
 
 static inline void hive_yield(void) {
     hax_sleep(0);

@@ -10,7 +10,7 @@ applications.
 ```text
 app/
 ├── include/        Public HAX/HIVE application SDK
-├── widgets.c       HIVE 1.1 toolkit showcase
+├── widgets.c       HIVE toolkit showcase
 └── wdemo.c         Independent windowed application example
 src/
 ├── api/            Snapshot of the HBOS ↔ HIVE service contract
@@ -29,9 +29,10 @@ inside `hive_ui_t`. They must not include desktop-private headers such as
 
 ## Current status
 
-HIVE 1.1 provides Label, Button, Textbox, Checkbox, List, Progress, and Slider
-widgets; row/grid layout; keyboard focus; hover/pressed states; pointer capture;
-and UTF-8-safe navigation and deletion for existing textbox content.
+HIVE `0.1-beta5-gui.3` provides Toolkit API 1.3: Label, Button, Textbox,
+Checkbox, List, Progress, Slider, Scrollbar, Menu, Image, Canvas, and Panel
+widgets; row/grid layout and widget trees; keyboard focus; hover/pressed states;
+pointer capture; text selection; and UTF-8-safe editing.
 
 This repository is in the physical-split transition. The public toolkit and the
 sample HAX applications are already independent. The desktop runtime is kept as
@@ -46,8 +47,27 @@ to work throughout that migration.
 make test
 ```
 
-The test is host-side and validates the public widget ABI, input state machine,
-layout helpers, slider dragging, mouse release behavior, and UTF-8 deletion.
+The host-side test validates the public widget ABI, input state machine, widget
+trees, layout helpers, slider dragging, mouse release behavior, text selection,
+and UTF-8 editing.
+
+The transitional window server still depends on HBOS kernel contracts. Test it
+against a local HBOS checkout with:
+
+```sh
+make integration-test HBOS_DIR=/path/to/HBOS
+```
+
+## Synchronizing the transitional mirror
+
+Until HIVE becomes a ring3 service, import the HIVE-owned runtime and current
+HBOS contract snapshots with:
+
+```sh
+make sync HBOS_DIR=/path/to/HBOS
+```
+
+See [`docs/SOURCE_SYNC.md`](docs/SOURCE_SYNC.md) for the ownership rules.
 
 For a complete HBOS image, use the [HBOS repository](https://github.com/HeBitOS/HBOS).
 The integration build supports `make core-only`, `make nogui`, and external
