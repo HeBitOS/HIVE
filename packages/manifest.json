@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "architecture": "x86_64",
+  "packages": [
+    {"name": "calc", "version": "0.1.0", "depends": [], "description": "HIVE 整数计算器"},
+    {"name": "clock", "version": "0.1.0", "depends": [], "description": "HIVE 系统运行时间"},
+    {"name": "files", "version": "0.1.0", "depends": [], "description": "HIVE 文件管理器"},
+    {"name": "hexview", "version": "0.1.0", "depends": [], "description": "HIVE 十六进制查看器"},
+    {"name": "hivepkg", "version": "0.1.0", "depends": [], "description": "HIVE 软件包管理器"},
+    {"name": "imgview", "version": "0.1.0", "depends": [], "description": "HIVE BMP 图片查看器"},
+    {"name": "settings", "version": "0.1.0", "depends": [], "description": "HIVE 设置前端"},
+    {"name": "shortcuts", "version": "0.1.0", "depends": [], "description": "HIVE 快捷键参考"},
+    {"name": "taskmgr", "version": "0.1.0", "depends": [], "description": "HIVE 进程信号控制"},
+    {"name": "wdemo", "version": "0.1.0", "depends": [], "description": "HIVE 并发窗口示例"},
+    {"name": "widgets", "version": "0.1.0", "depends": [], "description": "HIVE 控件与布局示例"}
+  ]
+}

@@ -4,8 +4,9 @@ CFLAGS ?= -O2 -Wall -Wextra
 HBOS_DIR ?= $(if $(wildcard ../HBOS/Makefile),../HBOS,$(if $(wildcard ../hbosv2/Makefile),../hbosv2,../HBOS))
 HBOS_BUILD_DIR ?= $(CURDIR)/$(BUILD_DIR)/hbos
 HBOS_RUN_TARGET ?= run
+PKG_REPO_DIR ?= $(CURDIR)/$(BUILD_DIR)/repo
 
-.PHONY: all help test test-app-boundaries integration-test apps image run start run-uefi sync clean
+.PHONY: all help test test-app-boundaries integration-test apps repo image run start run-uefi sync clean
 
 all: test
 
@@ -14,6 +15,7 @@ help:
 	@echo "  make test              Run standalone Toolkit API tests"
 	@echo "  make integration-test  Test the runtime against HBOS kernel contracts"
 	@echo "  make apps              Build all independent HIVE .hax applications"
+	@echo "  make repo              Build a local hivepkg repository"
 	@echo "  make image             Build HBOS images with this HIVE source tree"
 	@echo "  make run / make start  Build and start HIVE in QEMU (BIOS)"
 	@echo "  make run-uefi          Build and start HIVE in QEMU (UEFI)"
@@ -26,12 +28,17 @@ $(BUILD_DIR):
 $(BUILD_DIR)/test_hive_ui: tests/test_hive_ui.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
 
+$(BUILD_DIR)/test_hive_pkg: tests/test_hive_pkg.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
+
 test-app-boundaries:
 	bash tests/test_app_boundaries.sh
 
-test: $(BUILD_DIR)/test_hive_ui test-app-boundaries
+test: $(BUILD_DIR)/test_hive_ui $(BUILD_DIR)/test_hive_pkg test-app-boundaries
 	$(BUILD_DIR)/test_hive_ui
-	@echo "HIVE Toolkit API 1.3 tests passed"
+	$(BUILD_DIR)/test_hive_pkg
+	python3 tools/hivepkg_repo.py check packages/manifest.json
+	@echo "HIVE host tests passed"
 
 integration-test: test
 	@test -f "$(HBOS_DIR)/Makefile" || \
@@ -47,6 +54,12 @@ apps: integration-test
 		-f Makefile \
 		BUILD_DIR="$(HBOS_BUILD_DIR)" \
 		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(CURDIR)/app" hax-apps
+
+repo: apps
+	python3 tools/hivepkg_repo.py build \
+		--manifest packages/manifest.json \
+		--apps-dir "$(HBOS_BUILD_DIR)/app" \
+		--output "$(PKG_REPO_DIR)"
 
 image: integration-test
 	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \
@@ -75,4 +88,4 @@ sync:
 	bash tools/sync-from-hbos.sh "$(HBOS_DIR)"
 
 clean:
-	rm -f $(BUILD_DIR)/test_hive_ui $(BUILD_DIR)/test_hive_winsrv
+	rm -f $(BUILD_DIR)/test_hive_ui $(BUILD_DIR)/test_hive_pkg $(BUILD_DIR)/test_hive_winsrv

@@ -42,6 +42,12 @@ Checkbox, List, Progress, Slider, Scrollbar, Menu, Image, Canvas, and Panel
 widgets; row/grid layout and widget trees; keyboard focus; hover/pressed states;
 pointer capture; text selection; and UTF-8-safe editing.
 
+HIVE also includes `hivepkg`, an apt-style package manager for disk-installed
+HAX applications. It supports local and IPv4 HTTP repositories, cached package
+metadata, search, dependencies, SHA-256 verification, install/remove/upgrade,
+and execution through `execve`. See
+[`docs/HIVE_PACKAGE_MANAGER.md`](docs/HIVE_PACKAGE_MANAGER.md).
+
 The eight registration-based desktop applications are now independent HAX
 processes. The desktop discovers them through HAX metadata, launches them
 asynchronously, and passes file paths to the image and hexadecimal viewers.
@@ -75,6 +81,12 @@ Build every independent application without building an ISO:
 
 ```sh
 make apps HBOS_DIR=/path/to/HBOS
+```
+
+Generate a local package repository from those application artifacts:
+
+```sh
+make repo HBOS_DIR=/path/to/HBOS
 ```
 
 ## Run
