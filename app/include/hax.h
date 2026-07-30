@@ -145,6 +145,19 @@ static inline long hax_write_file(const char *path, const void *buf, long len) {
     return total;
 }
 
+/**
+ * Perform an HTTPS GET through the HBOS TLS service.
+ *
+ * The returned bytes contain the complete HTTP response (headers and body).
+ * Current HBOS TLS encrypts the transport but does not yet authenticate the
+ * peer's X.509 certificate chain.
+ */
+static inline long hax_https_get(const char *host, HU32 ipv4, HU16 port,
+                                 const char *path, void *out, HU32 out_cap) {
+    return __syscall6(HBOS_SYS_HTTPS_GET, (long)host, (long)ipv4,
+                      (long)port, (long)path, (long)out, (long)out_cap);
+}
+
 /* ── GUI 画布接口（仅 HAX_KIND_GUI / BOTH 应用，从图形桌面启动时可用） ──
  *
  * 用法：先 hax_gui_begin() 探测 GUI 是否可用；可用则进入“绘制-提交-取输入”
