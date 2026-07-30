@@ -29,12 +29,6 @@
 #include "../gui/gui_state.h"
 #include "../gui/gui_dirty.h"
 #include "../gui/gui_draw.h"
-#include "../gui/gui_app.h"
-
-/* app_imgview.c / app_hexview.c 各自路径 setter，供 gui_open_selected_file()
- * 打开对应查看器前写入要打开的文件路径 */
-void app_imgview_set_path(gui_state_t *st, const char *path);
-void app_hexview_set_path(gui_state_t *st, const char *path);
 #include "../rtc_tz.h"
 #include "../shell/shell.h"
 #include "tool.h"
@@ -128,16 +122,11 @@ typedef struct {
 
 static const gui_app_meta_t gui_apps[] = {
     {"记事本", "编辑笔记文件", GUI_APP_NOTES},
-    {"计算器", "方向键调整数值", GUI_APP_CALC},
     {"文件统计", "统计选中文件行数和字节", GUI_APP_UWC},
     {"贪吃蛇", "方向键移动", GUI_APP_SNAKE},
     {"浏览器", "打开 HTTP/HTTPS 网页", GUI_APP_BROWSER},
     {"代码工作台", "编辑、保存、运行 C 文件", GUI_APP_CODE},
     {"控制台终端", "运行命令与系统交互", GUI_APP_DIAG},
-    {"时钟", "实时时钟与日期", GUI_APP_CLOCK},
-    {"设置", "主题与字体", GUI_APP_SETTINGS},
-    {"任务管理器", "查看运行中的任务，结束任务", GUI_APP_TASKMGR},
-    {"快捷键", "查看全局和各应用的键盘快捷键", GUI_APP_SHORTCUTS},
 };
 
 static const gui_file_action_t gui_file_actions[FILE_ACTION_COUNT] = {
@@ -150,8 +139,14 @@ static const gui_file_action_t gui_file_actions[FILE_ACTION_COUNT] = {
     {"删除",   4},
 };
 
+static int gui_hax_count(void);
+static const hax_app_entry_t *gui_hax_at(int k);
+
+#define GUI_BUILTIN_APP_COUNT \
+    ((uint32_t)(sizeof(gui_apps) / sizeof(gui_apps[0])))
+
 static uint32_t gui_app_count(void) {
-    return (uint32_t)(sizeof(gui_apps) / sizeof(gui_apps[0]));
+    return GUI_BUILTIN_APP_COUNT + (uint32_t)gui_hax_count();
 }
 
 static file_t *selected_file(gui_state_t *st);
@@ -855,17 +850,11 @@ static void blit_icon(int x, int y, int sz, int id) {
 static int app_icon_id(int mode) {
     switch (mode) {
         case GUI_APP_NOTES:   return ICON_NOTES;
-        case GUI_APP_CALC:    return ICON_CALC;
         case GUI_APP_UWC:     return ICON_UWC;
         case GUI_APP_SNAKE:   return ICON_SNAKE;
         case GUI_APP_BROWSER: return ICON_BROWSER;
         case GUI_APP_CODE:    return ICON_CODE;
         case GUI_APP_DIAG:    return ICON_TERM;
-        case GUI_APP_CLOCK:    return ICON_CLOCK;
-        case GUI_APP_SETTINGS: return ICON_SYS;
-        case GUI_APP_FILES:    return ICON_FILES;
-        case GUI_APP_TASKMGR:  return ICON_SYS;
-        case GUI_APP_SHORTCUTS: return ICON_SHORTCUTS;
         default:               return ICON_APPS;
     }
 }
@@ -1039,55 +1028,6 @@ static void append_uint(char *buf, uint32_t cap, uint32_t *pos, uint32_t v) {
 static void append_int(char *buf, uint32_t cap, uint32_t *pos, int v) {
     if (v < 0) append_char(buf, cap, pos, '-');
     append_uint(buf, cap, pos, (uint32_t)(v < 0 ? -v : v));
-}
-
-static void append_uint64(char *buf, uint32_t cap, uint32_t *pos, unsigned long long v) {
-    char tmp[24];
-    uint32_t n = 0;
-    do {
-        tmp[n++] = (char)('0' + (v % 10));
-        v /= 10;
-    } while (v && n < sizeof(tmp));
-    while (n) append_char(buf, cap, pos, tmp[--n]);
-}
-
-static void append_ll(char *buf, uint32_t cap, uint32_t *pos, long long v) {
-    /* -v on LLONG_MIN overflows signed long long -- negate in unsigned
-     * space instead, which wraps around to the correct magnitude. */
-    if (v < 0) {
-        append_char(buf, cap, pos, '-');
-        append_uint64(buf, cap, pos, 0ULL - (unsigned long long)v);
-    } else {
-        append_uint64(buf, cap, pos, (unsigned long long)v);
-    }
-}
-
-/* Scientific-notation formatting for calculator results that overflow
- * long long (see app_calc.c's calc_to_sci) -- pure integer arithmetic
- * only, no float/double, since the kernel is built with SSE/x87 disabled
- * (see Makefile's CFLAGS: -mno-80387 -mno-mmx -mno-sse -mno-sse2). mant is
- * a <=9-significant-digit integer (any sign); the true value is
- * approximately mant * 10^exp. Renders as "D.DDDDDDDDe+NN". */
-static void append_sci(char *buf, uint32_t cap, uint32_t *pos, long long mant, int exp) {
-    if (mant < 0) append_char(buf, cap, pos, '-');
-    unsigned long long m = mant < 0 ? (0ULL - (unsigned long long)mant) : (unsigned long long)mant;
-    char digits[20];
-    int nd = 0;
-    if (m == 0) digits[nd++] = '0';
-    while (m) { digits[nd++] = (char)('0' + (m % 10)); m /= 10; }
-    int total_exp = exp + (nd - 1);
-    append_char(buf, cap, pos, digits[nd - 1]);
-    append_char(buf, cap, pos, '.');
-    if (nd > 1) {
-        for (int i = nd - 2; i >= 0; i--) append_char(buf, cap, pos, digits[i]);
-    } else {
-        append_char(buf, cap, pos, '0');
-    }
-    append_char(buf, cap, pos, 'e');
-    append_char(buf, cap, pos, total_exp < 0 ? '-' : '+');
-    int e = total_exp < 0 ? -total_exp : total_exp;
-    if (e < 10) append_char(buf, cap, pos, '0');
-    append_uint(buf, cap, pos, (uint32_t)e);
 }
 
 static const char *gui_file_path(gui_state_t *st) {
@@ -2026,16 +1966,11 @@ static void draw_resource_panel(int tx, int ty, int win_w, int w, int h) {
 static uint32_t app_accent(int mode) {
     switch (mode) {
         case GUI_APP_NOTES:   return rgb(46, 204, 113);
-        case GUI_APP_CALC:    return rgb(52, 152, 219);
         case GUI_APP_UWC:     return rgb(241, 196, 15);
         case GUI_APP_SNAKE:   return rgb(39, 174, 96);
         case GUI_APP_BROWSER: return rgb(61, 174, 233);
         case GUI_APP_CODE:    return rgb(155, 89, 182);
         case GUI_APP_DIAG:    return rgb(230, 126, 34);
-        case GUI_APP_CLOCK:    return rgb(231, 76, 60);
-        case GUI_APP_SETTINGS: return rgb(149, 165, 166);
-        case GUI_APP_FILES:    return rgb(52, 152, 219);
-        case GUI_APP_SHORTCUTS: return rgb(39, 174, 96);
         default:               return rgb(61, 174, 233);
     }
 }
@@ -2043,7 +1978,7 @@ static uint32_t app_accent(int mode) {
 static int gui_app_grid_cols(int win_w) {
     int cols = (win_w - 8) / 132;
     if (cols < 2) cols = 2;
-    if (cols > 5) cols = 5;   /* 5 列：9 个内置应用排 2 行，不溢出底部状态栏 */
+    if (cols > 5) cols = 5;
     return cols;
 }
 
@@ -2053,7 +1988,7 @@ static void gui_app_tile_rect(int tx, int ty, int win_w, uint32_t i,
     int gap = 14;
     int cols = gui_app_grid_cols(win_w);
     int tw = (win_w - 8 - gap * (cols - 1)) / cols;
-    int th = 112;
+    int th = 86;
     int col = (int)(i % (uint32_t)cols);
     int row = (int)(i / (uint32_t)cols);
     *x = tx + col * (tw + gap);
@@ -2076,10 +2011,15 @@ static void draw_apps_panel(int tx, int ty, int win_w, const gui_state_t *st) {
     if ((uint32_t)selected >= gui_app_count()) selected = (int)gui_app_count() - 1;
 
     for (uint32_t i = 0; i < gui_app_count(); i++) {
-        const gui_app_meta_t *app = &gui_apps[i];
+        const gui_app_meta_t *app =
+            i < GUI_BUILTIN_APP_COUNT ? &gui_apps[i] : 0;
+        const hax_app_entry_t *hax =
+            i >= GUI_BUILTIN_APP_COUNT ?
+                gui_hax_at((int)(i - GUI_BUILTIN_APP_COUNT)) : 0;
+        const char *name = app ? app->name : (hax ? hax->name : "应用");
         int x, y, w, h;
         gui_app_tile_rect(tx, ty, cw, i, &x, &y, &w, &h);
-        uint32_t accent = app_accent(app->mode);
+        uint32_t accent = app ? app_accent(app->mode) : rgb(61, 174, 233);
         int sel = ((int)i == selected);
 
         // Translucent glass tile; selected gets an accent wash + ring.
@@ -2091,18 +2031,18 @@ static void draw_apps_panel(int tx, int ty, int win_w, const gui_state_t *st) {
             rect(x + w - 1, y + 10, 1, h - 20, accent);
         }
 
-        int isz = ui_s(52), ix = x + (w - isz) / 2, iy = y + ui_s(16);
-        blit_icon(ix, iy, isz, app_icon_id(app->mode));
+        int isz = ui_s(40), ix = x + (w - isz) / 2, iy = y + ui_s(10);
+        blit_icon(ix, iy, isz, app ? app_icon_id(app->mode) : ICON_APPS);
 
-        int tw = text_width(app->name, 1);
+        int tw = text_width(name, 1);
         int lx = x + (w - tw) / 2;
         if (lx < x + 4) lx = x + 4;
-        text(lx, y + h - 26, app->name,
+        text(lx, y + h - 26, name,
              sel ? rgb(255, 255, 255) : rgb(228, 232, 236), 1);
     }
     uint32_t cols = (uint32_t)gui_app_grid_cols(cw);
     uint32_t rows = (gui_app_count() + cols - 1) / cols;
-    text(tx, ty + 64 + (int)rows * 126 + 6,
+    text(tx, ty + 64 + (int)rows * 100 + 6,
          "单击图标启动 · 方向键选择 · Enter 打开",
          rgb(200, 206, 212), 1);
 }
@@ -5962,7 +5902,6 @@ static void draw_panel_window(int tx, int ty, int win_w, int win_h, int w, int h
 }
 
 static void draw_app_window_body(int tx, int ty, int win_w, int win_h, gui_state_t *st, int mode) {
-    if (gui_app_draw(st, mode, tx, ty, win_w, win_h)) return;
     if (mode == GUI_APP_NOTES) draw_notes_app(tx, ty, win_w, win_h, st);
     else if (mode == GUI_APP_UWC) draw_uwc_app(tx, ty, st);
     else if (mode == GUI_APP_SNAKE) draw_snake_app(tx, ty, st);
@@ -6401,7 +6340,6 @@ static const desktop_icon_t g_desktop_icons[] = {
     {"文件管理器", WM_WIN_PANEL, PANEL_FILES},
     {"应用",       WM_WIN_PANEL, PANEL_APPS},
     {"控制台",     WM_WIN_APP,   GUI_APP_DIAG},
-    {"计算器",     WM_WIN_APP,   GUI_APP_CALC},
 };
 #define DESKTOP_ICON_COUNT ((int)(sizeof(g_desktop_icons) / sizeof(g_desktop_icons[0])))
 
@@ -6767,10 +6705,28 @@ static const gui_app_meta_t *selected_gui_app(gui_state_t *st) {
     }
     if (st->selected_app < 0) st->selected_app = 0;
     if ((uint32_t)st->selected_app >= count) st->selected_app = (int)count - 1;
+    if ((uint32_t)st->selected_app >= GUI_BUILTIN_APP_COUNT) return 0;
     return &gui_apps[(uint32_t)st->selected_app];
 }
 
 static void gui_open_selected_app(gui_state_t *st) {
+    uint32_t count = gui_app_count();
+    if (st->selected_app < 0) st->selected_app = 0;
+    if ((uint32_t)st->selected_app >= count)
+        st->selected_app = count ? (int)count - 1 : 0;
+    if ((uint32_t)st->selected_app >= GUI_BUILTIN_APP_COUNT) {
+        const hax_app_entry_t *entry = gui_hax_at(
+            st->selected_app - (int)GUI_BUILTIN_APP_COUNT);
+        if (!entry) {
+            st->status = "未选择应用";
+            return;
+        }
+        char *av[1] = { (char *)entry->name };
+        hax_app_spawn(entry->name, 1, av);
+        gui_toast(st, "已启动 ", entry->name);
+        st->status = "独立应用已启动";
+        return;
+    }
     const gui_app_meta_t *app = selected_gui_app(st);
     if (!app) {
         st->status = "未选择应用";
@@ -6808,15 +6764,17 @@ static void gui_open_selected_file(gui_state_t *st) {
     }
     if (gui_has_suffix(full, ".bmp") || gui_has_suffix(full, ".png") ||
         gui_has_suffix(full, ".jpg") || gui_has_suffix(full, ".jpeg")) {
-        app_imgview_set_path(st, full);
-        if (gui_open_window(st, WM_WIN_APP, GUI_APP_IMGVIEW, 0) >= 0)
-            st->status = "已用图片查看器打开";
+        char *av[2] = { "imgview", full };
+        if (hax_app_spawn("imgview", 2, av) >= 0)
+            st->status = "已用独立图片查看器打开";
+        else st->status = "图片查看器启动失败";
         return;
     }
     if (gui_looks_binary(node)) {
-        app_hexview_set_path(st, full);
-        if (gui_open_window(st, WM_WIN_APP, GUI_APP_HEXVIEW, 0) >= 0)
-            st->status = "已用十六进制查看器打开";
+        char *av[2] = { "hexview", full };
+        if (hax_app_spawn("hexview", 2, av) >= 0)
+            st->status = "已用独立十六进制查看器打开";
+        else st->status = "十六进制查看器启动失败";
         return;
     }
     gui_set_note_name(st, full);
@@ -7216,7 +7174,6 @@ static void handle_app_key(gui_state_t *st, int key) {
         return;
     }
     gui_sync_focus(st);
-    if (gui_app_handle_key(st, key)) return;
     if (st->app_mode == GUI_APP_NOTES) {
         note_load(st);
         if (key == 1) {  // Ctrl+A：全选
@@ -7611,7 +7568,7 @@ static void draw_window_switcher(int w, int h, gui_state_t *st) {
 }
 
 /* ── 启动器中的 .hax GUI 应用枚举 ──────────────────────────────
- * 仅 GUI 类应用进入启动器；数量受 SM_HAX_MAX 限制以约束面板高度。 */
+ * 桌面只读取应用元数据，不再链接独立应用的实现。 */
 static int gui_hax_count(void) {
     uint32_t n = hax_app_count();
     int c = 0;
@@ -7637,7 +7594,7 @@ static const hax_app_entry_t *gui_hax_at(int k) {
     return 0;
 }
 
-/* 启动器动态总高度：内置 13 项 + 追加的 .hax 行 */
+/* 启动器动态总高度：桌面面板 + 仍在迁移的旧应用 + 独立 .hax 行 */
 /* ── 开始菜单：统一应用条目（内置 + .hax）+ 搜索过滤 ──────────────
  * 键盘是 ASCII，应用名是中文，故每个内置应用附带 ASCII/拼音关键词供搜索。 */
 enum { SM_K_PANEL = 0, SM_K_APP = 1, SM_K_HAX = 2 };
@@ -7651,15 +7608,10 @@ static const sm_entry_t sm_builtin[] = {
     {"资源",       "resource sys ziyuan",      SM_K_PANEL, PANEL_SYS,       ICON_SYS},
     {"应用",       "app apps yingyong",        SM_K_PANEL, PANEL_APPS,      ICON_APPS},
     {"记事本",     "note notes jishi",         SM_K_APP,   GUI_APP_NOTES,   ICON_NOTES},
-    {"计算器",     "calc calculator jisuan",   SM_K_APP,   GUI_APP_CALC,    ICON_CALC},
     {"贪吃蛇",     "snake game tanchishe",     SM_K_APP,   GUI_APP_SNAKE,   ICON_SNAKE},
     {"浏览器",     "web browser liulan",       SM_K_APP,   GUI_APP_BROWSER, ICON_BROWSER},
     {"代码",       "code daima",               SM_K_APP,   GUI_APP_CODE,    ICON_CODE},
     {"终端",       "term terminal shell",      SM_K_APP,   GUI_APP_DIAG,    ICON_TERM},
-    {"时钟",       "clock time shizhong",      SM_K_APP,   GUI_APP_CLOCK,   ICON_CLOCK},
-    {"设置",       "settings config shezhi",   SM_K_APP,   GUI_APP_SETTINGS,ICON_SYS},
-    {"任务管理器", "task taskmgr process renwu guanli", SM_K_APP, GUI_APP_TASKMGR, ICON_SYS},
-    {"快捷键",     "shortcuts keys kuaijiejian",        SM_K_APP, GUI_APP_SHORTCUTS, ICON_SHORTCUTS},
 };
 #define SM_BUILTIN_N ((int)(sizeof(sm_builtin) / sizeof(sm_builtin[0])))
 
@@ -8284,19 +8236,11 @@ static void cmd_gui(int argc, char **argv) {
     wm_set_panel_title(PANEL_SYS, "资源管理器");
     wm_set_panel_title(PANEL_APPS, "应用程序");
     wm_set_app_title(GUI_APP_NOTES, "记事本");
-    wm_set_app_title(GUI_APP_CALC, "计算器");
     wm_set_app_title(GUI_APP_UWC, "文件统计");
     wm_set_app_title(GUI_APP_SNAKE, "贪吃蛇");
     wm_set_app_title(GUI_APP_BROWSER, "浏览器");
     wm_set_app_title(GUI_APP_CODE, "代码工作台");
     wm_set_app_title(GUI_APP_DIAG, "控制台终端");
-    wm_set_app_title(GUI_APP_CLOCK, "时钟");
-    wm_set_app_title(GUI_APP_SETTINGS, "设置");
-    wm_set_app_title(GUI_APP_FILES, "文件管理器");
-    wm_set_app_title(GUI_APP_TASKMGR, "任务管理器");
-    wm_set_app_title(GUI_APP_SHORTCUTS, "快捷键");
-    wm_set_app_title(GUI_APP_IMGVIEW, "图片查看器");
-    wm_set_app_title(GUI_APP_HEXVIEW, "十六进制查看器");
 
     (void)block_init();
     if (mouse_init() < 0) st.status = "未检测到鼠标";
@@ -9096,12 +9040,7 @@ static void cmd_gui(int argc, char **argv) {
                                                 note_text_dragging = 1;
                                                 st.status = "已移动笔记光标";
                                             } else {
-                                                int aw_x, aw_y, aw_w, aw_h;
-                                                int aw = st.wm.active_window;
-                                                gui_window_metrics(&st, w, h, NULL, aw, &aw_x, &aw_y, &aw_w, &aw_h);
-                                                int atx = aw_x + 30, aty = aw_y + 42;
-                                                if (!gui_app_on_click(&st, mx, my, atx, aty, aw_w, aw_h))
-                                                    st.status = "应用已聚焦";
+                                                st.status = "应用已聚焦";
                                             }
                                         }
                                     }
@@ -9183,10 +9122,6 @@ static void cmd_gui(int argc, char **argv) {
             }
         }
         if (snake_auto_tick(&st)) {
-            gui_dirty_mark_full();
-            draw_gui_frame(&fb, w, h, &st, mx, my, cursor_edge);
-        }
-        if (gui_app_tick(&st)) {
             gui_dirty_mark_full();
             draw_gui_frame(&fb, w, h, &st, mx, my, cursor_edge);
         }
@@ -9343,10 +9278,6 @@ void gui_append_char(char *buf, uint32_t cap, uint32_t *pos, char c) { append_ch
 void gui_append_str(char *buf, uint32_t cap, uint32_t *pos, const char *s) { append_str(buf, cap, pos, s); }
 void gui_append_int(char *buf, uint32_t cap, uint32_t *pos, int v) { append_int(buf, cap, pos, v); }
 void gui_append_uint(char *buf, uint32_t cap, uint32_t *pos, uint32_t v) { append_uint(buf, cap, pos, v); }
-void gui_append_ll(char *buf, uint32_t cap, uint32_t *pos, long long v) { append_ll(buf, cap, pos, v); }
-void gui_append_sci(char *buf, uint32_t cap, uint32_t *pos, long long mant, int exp) {
-    append_sci(buf, cap, pos, mant, exp);
-}
 
 void gui_draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
     int dx = x1 - x0, dy = y1 - y0;

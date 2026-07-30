@@ -40,7 +40,7 @@ int ui_s(int v);                /* 返回 v 缩放后的像素值 */
 #define SM_POWER_ITEM   14
 /* 动态追加的 .hax GUI 应用：网格命中返回 SM_HAX_BASE+k（避开 13/14） */
 #define SM_HAX_BASE    100
-#define SM_HAX_MAX       7   /* 启动器最多展示的 .hax GUI 应用数（限面板高度） */
+#define SM_HAX_MAX       32  /* 独立应用由元数据枚举；面板高度会动态扩展。 */
 /* 网格命中返回 SM_CELL_BASE+可见单元格序号；gui.c 据搜索过滤映射为实际应用 */
 #define SM_CELL_BASE   200
 #define SM_SEARCH_ITEM  15   /* 点中搜索框（保持菜单打开） */

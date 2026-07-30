@@ -162,7 +162,11 @@ hive_ui_remove(&ui, PANEL_ID);
 
 ## 应用接入要求
 
-演示级的 `widgets.hax` 和 `wdemo.hax` 不再随系统打包。HIVE 控件行为由
-`scripts/test_hive_ui.c` 与 `scripts/test_hive_winsrv.c` 维护回归覆盖。
-后续迁移顺序建议为：计算器 → 设置 → 记事本 → 文件管理器。迁移完成的应用
-不得直接包含 `gui_state.h`、`wm.h`、`winsrv.h` 或调用 framebuffer。
+`app/` 下每个 `.c` 都是独立构建和加载的 `.hax`。计算器、时钟、设置、
+文件管理器、任务管理器、快捷键、图片查看器与十六进制查看器已经不再作为
+桌面对象链接；桌面从 HAX manifest 枚举它们，并以独立进程异步启动。
+
+应用不得直接包含 `gui_state.h`、`gui_draw.h`、`gui_app.h`、`wm.h`、
+`winsrv.h`，不得访问 framebuffer、VFS 内部对象或任务结构。需要结束进程时
+使用 `hive_process_signal(pid, signal)`；文件访问使用 HAX 便捷接口或用户态
+libc。`make test` 会对这个依赖边界执行回归检查。

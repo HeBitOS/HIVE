@@ -10,6 +10,14 @@ applications.
 ```text
 app/
 ├── include/        Public HAX/HIVE application SDK
+├── calc.c          Independent calculator
+├── clock.c         Independent uptime clock
+├── files.c         Independent file manager
+├── hexview.c       Independent hexadecimal viewer
+├── imgview.c       Independent BMP viewer
+├── settings.c      Independent settings frontend
+├── shortcuts.c     Independent shortcut reference
+├── taskmgr.c       Independent process-signal frontend
 ├── widgets.c       HIVE toolkit showcase
 └── wdemo.c         Independent windowed application example
 src/
@@ -34,12 +42,16 @@ Checkbox, List, Progress, Slider, Scrollbar, Menu, Image, Canvas, and Panel
 widgets; row/grid layout and widget trees; keyboard focus; hover/pressed states;
 pointer capture; text selection; and UTF-8-safe editing.
 
-This repository is in the physical-split transition. The public toolkit and the
-sample HAX applications are already independent. The desktop runtime is kept as
-an exact HBOS source-layout mirror while `src/tools/gui.c`, built-in apps, and
-resource blobs are migrated from kernel-linked code to a ring3 service. HBOS
-temporarily retains an integration copy so its full and no-GUI builds continue
-to work throughout that migration.
+The eight registration-based desktop applications are now independent HAX
+processes. The desktop discovers them through HAX metadata, launches them
+asynchronously, and passes file paths to the image and hexadecimal viewers.
+Their former `src/gui/apps/` modules are no longer present or linked.
+
+The repository is still in the physical-split transition for the desktop
+runtime itself. Several older tools implemented directly inside
+`src/tools/gui.c` (notes, file statistics, snake, browser, code workbench, and
+terminal) remain to be extracted while the desktop, resources, and compositor
+move from kernel-linked code to a ring3 service.
 
 ## Test
 
@@ -49,13 +61,20 @@ make test
 
 The host-side test validates the public widget ABI, input state machine, widget
 trees, layout helpers, slider dragging, mouse release behavior, text selection,
-and UTF-8 editing.
+UTF-8 editing, and the rule that independent applications cannot include
+desktop/kernel-private headers.
 
 The transitional window server still depends on HBOS kernel contracts. Test it
 against a local HBOS checkout with:
 
 ```sh
 make integration-test HBOS_DIR=/path/to/HBOS
+```
+
+Build every independent application without building an ISO:
+
+```sh
+make apps HBOS_DIR=/path/to/HBOS
 ```
 
 ## Run
@@ -74,14 +93,14 @@ make run
 
 ## Synchronizing the transitional mirror
 
-Until HIVE becomes a ring3 service, import the HIVE-owned runtime and current
-HBOS contract snapshots with:
+Refresh only the HBOS-owned ABI and libc contract snapshots with:
 
 ```sh
 make sync HBOS_DIR=/path/to/HBOS
 ```
 
-See [`docs/SOURCE_SYNC.md`](docs/SOURCE_SYNC.md) for the ownership rules.
+The command never overwrites `app/`, the public HIVE SDK, the desktop runtime,
+tests, resources, or documentation.
 
 For a complete HBOS image, use the [HBOS repository](https://github.com/HeBitOS/HBOS).
 The integration build supports `make core-only`, `make nogui`, and external

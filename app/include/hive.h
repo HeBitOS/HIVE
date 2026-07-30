@@ -128,4 +128,9 @@ static inline void hive_yield(void) {
     hax_sleep(0);
 }
 
+/** 向进程发送信号。用于独立任务管理工具，避免应用直接依赖原始系统调用。 */
+static inline int hive_process_signal(HI32 pid, HI32 signal) {
+    return (int)__syscall3(HBOS_SYS_KILL, pid, signal, 0);
+}
+
 #endif /* HBOS_HIVE_H */

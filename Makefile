@@ -5,7 +5,7 @@ HBOS_DIR ?= $(if $(wildcard ../HBOS/Makefile),../HBOS,$(if $(wildcard ../hbosv2/
 HBOS_BUILD_DIR ?= $(CURDIR)/$(BUILD_DIR)/hbos
 HBOS_RUN_TARGET ?= run
 
-.PHONY: all help test integration-test image run start run-uefi sync clean
+.PHONY: all help test test-app-boundaries integration-test apps image run start run-uefi sync clean
 
 all: test
 
@@ -13,6 +13,7 @@ help:
 	@echo "HIVE targets:"
 	@echo "  make test              Run standalone Toolkit API tests"
 	@echo "  make integration-test  Test the runtime against HBOS kernel contracts"
+	@echo "  make apps              Build all independent HIVE .hax applications"
 	@echo "  make image             Build HBOS images with this HIVE source tree"
 	@echo "  make run / make start  Build and start HIVE in QEMU (BIOS)"
 	@echo "  make run-uefi          Build and start HIVE in QEMU (UEFI)"
@@ -25,7 +26,10 @@ $(BUILD_DIR):
 $(BUILD_DIR)/test_hive_ui: tests/test_hive_ui.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
 
-test: $(BUILD_DIR)/test_hive_ui
+test-app-boundaries:
+	bash tests/test_app_boundaries.sh
+
+test: $(BUILD_DIR)/test_hive_ui test-app-boundaries
 	$(BUILD_DIR)/test_hive_ui
 	@echo "HIVE Toolkit API 1.3 tests passed"
 
@@ -37,6 +41,12 @@ integration-test: test
 		-o $(BUILD_DIR)/test_hive_winsrv
 	$(BUILD_DIR)/test_hive_winsrv
 	@echo "HIVE runtime integration tests passed"
+
+apps: integration-test
+	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \
+		-f Makefile \
+		BUILD_DIR="$(HBOS_BUILD_DIR)" \
+		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(CURDIR)/app" hax-apps
 
 image: integration-test
 	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \

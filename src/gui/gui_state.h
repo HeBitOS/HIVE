@@ -8,19 +8,11 @@
 
 #define GUI_APP_NONE  -1
 #define GUI_APP_NOTES 0
-#define GUI_APP_CALC  1
 #define GUI_APP_UWC   2
 #define GUI_APP_SNAKE 3
 #define GUI_APP_BROWSER 4
 #define GUI_APP_CODE 5
 #define GUI_APP_DIAG 6
-#define GUI_APP_CLOCK    7
-#define GUI_APP_SETTINGS 8
-#define GUI_APP_FILES    9
-#define GUI_APP_TASKMGR  10
-#define GUI_APP_SHORTCUTS 11
-#define GUI_APP_IMGVIEW 12
-#define GUI_APP_HEXVIEW 13
 
 #define NOTE_EDIT_CAP 512
 #define BROWSER_URL_CAP 160
@@ -36,9 +28,6 @@
 #define CODE_EDIT_CAP 4096
 #define SNAKE_MAX (16 * 10)
 #define GUI_PATH_MAX 256
-#define IMGVIEW_MAX_W 512
-#define IMGVIEW_MAX_H 384
-#define HEXVIEW_MAX_BYTES 16384
 
 enum {
     GUI_KEY_UP = 1001,
@@ -62,34 +51,6 @@ typedef struct gui_state {
     int selected_file;
     int selected_app;
     int app_mode;
-    long long calc_value;
-    long long calc_acc;
-    long long calc_input;
-    long long calc_last_lhs;
-    long long calc_last_rhs;
-    int calc_just_evaluated;
-    char calc_op;
-    char calc_last_op;
-    int calc_has_input;
-    int calc_error;
-    /* 结果溢出 long long 时改用科学计数法显示：calc_sci=1 时，真实值约等于
-     * calc_sci_mant（<=9 位有效数字，可正可负）* 10^calc_sci_exp；此时
-     * calc_value 本身被钳制到 LLONG_MAX/MIN，只用来让后续运算不至于用到
-     * 未定义的值，显示时以 calc_sci_mant/calc_sci_exp 为准（见 app_calc.c
-     * 的 calc_to_sci）。 */
-    int calc_sci;
-    long long calc_sci_mant;
-    int calc_sci_exp;
-    /* 计算历史（环形缓冲，newest 在 head 前一位） */
-#define CALC_HIST_N 10
-    long long calc_hist_lhs[CALC_HIST_N];
-    long long calc_hist_rhs[CALC_HIST_N];
-    long long calc_hist_res[CALC_HIST_N];
-    char calc_hist_op[CALC_HIST_N];
-    int  calc_hist_sci[CALC_HIST_N];
-    long long calc_hist_sci_mant[CALC_HIST_N];
-    int  calc_hist_sci_exp[CALC_HIST_N];
-    int  calc_hist_count;   /* 累计条数（取 min(count, N) 显示） */
     int snake_x;
     int snake_y;
     int snake_tx;
@@ -154,12 +115,7 @@ typedef struct gui_state {
     const char *status;
     int splash_ticks;
     int snap_preview;
-    uint8_t clock_last_sec;
     int switcher_ticks;
-    /* 任务管理器：选中行 + 每秒刷新节流（复用 CMOS 秒计数思路，见
-     * app_clock.c 的 clock_last_sec，taskmgr 单独一份避免和时钟耦合） */
-    int taskmgr_selected;
-    uint8_t taskmgr_last_sec;
     int  toast_ticks;       /* >0 时显示 toast 通知（每帧自减） */
     char toast_msg[80];     /* toast 文本 */
     /* 开始菜单搜索 */
@@ -186,24 +142,6 @@ typedef struct gui_state {
     uint32_t console_cursor;
     int console_history_idx;
     int console_scroll;
-    /* file manager */
-    char fm_path[GUI_PATH_MAX];
-    int  fm_selected;
-    int  fm_scroll;
-    /* 图片查看器（BMP）：解码后的像素数据是静态全局数组（见 app_imgview.c），
-     * 这里只放路径/状态这些小元数据，避免把几百 KB 的像素缓冲塞进
-     * gui_state_t */
-    char imgview_path[GUI_PATH_MAX];
-    int  imgview_loaded;
-    int  imgview_error;      /* 解码失败（非 BMP/非 24 位/太大等） */
-    int  imgview_w, imgview_h;
-    int  imgview_scroll_x, imgview_scroll_y;
-    /* 十六进制查看器：原始字节同样是静态全局数组（见 app_hexview.c） */
-    char hexview_path[GUI_PATH_MAX];
-    int  hexview_loaded;
-    uint32_t hexview_len;      /* 实际读取的字节数（可能因超过上限被截断） */
-    uint32_t hexview_file_size;/* 文件真实大小，用于判断是否被截断 */
-    int  hexview_scroll;       /* 起始行号（每行 16 字节） */
     /* 浏览器后台异步加载 */
     int  browser_loading;       /* 1=正在后台抓取页面，0=空闲 */
     int  browser_push_hist;     /* 本次加载是否需要向历史压栈 */
