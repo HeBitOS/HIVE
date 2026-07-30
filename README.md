@@ -55,9 +55,10 @@ widgets; row/grid layout and widget trees; keyboard focus; hover/pressed states;
 pointer capture; text selection; and UTF-8-safe editing.
 
 HIVE includes HPT, its apt-style package manager for disk-installed HAX
-applications, as a pinned Git submodule. HPT supports local, IPv4 HTTP, and
-HTTPS repositories, cached metadata, search, dependencies, SHA-256
-verification, install/remove/upgrade, and execution through `execve`. HIVE deliberately has
+applications, as a pinned Git submodule. HPT supports local and IPv4 HTTP
+repositories plus CA-verified DNS/IPv4/IPv6 HTTPS repositories, cached
+metadata, search, dependencies, SHA-256 verification, install/remove/upgrade,
+and execution through `execve`. HIVE deliberately has
 no supported package-manager-free variant. Only a future fully kernel-only
 HBOS profile may omit the entire HIVE/HPT user-space stack. See the
 [HPT documentation](https://github.com/HeBitOS/HPT/blob/main/docs/HPT.md).
