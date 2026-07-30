@@ -34,6 +34,12 @@
 #include "libc/string.h"
 #include "libc/syscall.h"
 
+/* HTTPS transport ABI number. Keep the SDK buildable against older HBOS
+ * libc header snapshots; old kernels return ENOSYS at runtime. */
+#ifndef HBOS_SYS_HTTPS_GET
+#define HBOS_SYS_HTTPS_GET 98
+#endif
+
 /* ── 专有类型（参考 XJ380 风格，统一定宽整型与颜色类型） ───────────── */
 typedef int8_t   HI8;    /**< 8 位有符号整型 */
 typedef uint8_t  HU8;    /**< 8 位无符号整型 */
