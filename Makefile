@@ -5,8 +5,10 @@ HBOS_DIR ?= $(if $(wildcard ../HBOS/Makefile),../HBOS,$(if $(wildcard ../hbosv2/
 HBOS_BUILD_DIR ?= $(CURDIR)/$(BUILD_DIR)/hbos
 HBOS_RUN_TARGET ?= run
 PKG_REPO_DIR ?= $(CURDIR)/$(BUILD_DIR)/repo
+HPT_DIR ?= $(CURDIR)/HPT
+APP_STAGE_DIR ?= $(CURDIR)/$(BUILD_DIR)/app-src
 
-.PHONY: all help test test-app-boundaries integration-test apps repo image run start run-uefi sync clean
+.PHONY: all help check-hpt test test-app-boundaries integration-test stage-apps apps repo image run start run-uefi sync clean
 
 all: test
 
@@ -14,8 +16,8 @@ help:
 	@echo "HIVE targets:"
 	@echo "  make test              Run standalone Toolkit API tests"
 	@echo "  make integration-test  Test the runtime against HBOS kernel contracts"
-	@echo "  make apps              Build all independent HIVE .hax applications"
-	@echo "  make repo              Build a local hivepkg repository"
+	@echo "  make apps              Build all HIVE apps, including mandatory HPT"
+	@echo "  make repo              Build a local HPT repository"
 	@echo "  make image             Build HBOS images with this HIVE source tree"
 	@echo "  make run / make start  Build and start HIVE in QEMU (BIOS)"
 	@echo "  make run-uefi          Build and start HIVE in QEMU (UEFI)"
@@ -28,16 +30,19 @@ $(BUILD_DIR):
 $(BUILD_DIR)/test_hive_ui: tests/test_hive_ui.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
 
-$(BUILD_DIR)/test_hive_pkg: tests/test_hive_pkg.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
-
 test-app-boundaries:
 	bash tests/test_app_boundaries.sh
 
-test: $(BUILD_DIR)/test_hive_ui $(BUILD_DIR)/test_hive_pkg test-app-boundaries
+check-hpt:
+	@test -f "$(HPT_DIR)/app/hpt.c" && \
+		test -f "$(HPT_DIR)/app/include/hpt.h" && \
+		test -f "$(HPT_DIR)/tools/hpt_repo.py" || \
+		{ echo "HPT submodule is missing; run: git submodule update --init --recursive" >&2; exit 2; }
+
+test: check-hpt $(BUILD_DIR)/test_hive_ui test-app-boundaries
 	$(BUILD_DIR)/test_hive_ui
-	$(BUILD_DIR)/test_hive_pkg
-	python3 tools/hivepkg_repo.py check packages/manifest.json
+	$(MAKE) -C "$(HPT_DIR)" test
+	python3 "$(HPT_DIR)/tools/hpt_repo.py" check packages/manifest.json
 	@echo "HIVE host tests passed"
 
 integration-test: test
@@ -49,38 +54,46 @@ integration-test: test
 	$(BUILD_DIR)/test_hive_winsrv
 	@echo "HIVE runtime integration tests passed"
 
-apps: integration-test
+stage-apps: check-hpt | $(BUILD_DIR)
+	rm -rf "$(APP_STAGE_DIR)"
+	mkdir -p "$(APP_STAGE_DIR)/include"
+	cp app/*.c "$(APP_STAGE_DIR)/"
+	cp app/include/*.h "$(APP_STAGE_DIR)/include/"
+	cp "$(HPT_DIR)/app/hpt.c" "$(APP_STAGE_DIR)/hpt.c"
+	cp "$(HPT_DIR)/app/include/hpt.h" "$(APP_STAGE_DIR)/include/hpt.h"
+
+apps: integration-test stage-apps
 	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \
 		-f Makefile \
 		BUILD_DIR="$(HBOS_BUILD_DIR)" \
-		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(CURDIR)/app" hax-apps
+		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(APP_STAGE_DIR)" hax-apps
 
 repo: apps
-	python3 tools/hivepkg_repo.py build \
+	python3 "$(HPT_DIR)/tools/hpt_repo.py" build \
 		--manifest packages/manifest.json \
 		--apps-dir "$(HBOS_BUILD_DIR)/app" \
 		--output "$(PKG_REPO_DIR)"
 
-image: integration-test
+image: integration-test stage-apps
 	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \
 		-f Makefile \
 		BUILD_DIR="$(HBOS_BUILD_DIR)" \
-		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(CURDIR)/app" iso
+		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(APP_STAGE_DIR)" iso
 
-run: integration-test
+run: integration-test stage-apps
 	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \
 		-f Makefile \
 		BUILD_DIR="$(HBOS_BUILD_DIR)" \
-		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(CURDIR)/app" \
+		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(APP_STAGE_DIR)" \
 		"$(HBOS_RUN_TARGET)"
 
 start: run
 
-run-uefi: integration-test
+run-uefi: integration-test stage-apps
 	$(MAKE) -C "$(HBOS_DIR)" -f "$(CURDIR)/mk/hbos-integration.mk" \
 		-f Makefile \
 		BUILD_DIR="$(HBOS_BUILD_DIR)" \
-		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(CURDIR)/app" run-uefi
+		HIVE_SRC_DIR="$(CURDIR)/src" APP_DIR="$(APP_STAGE_DIR)" run-uefi
 
 sync:
 	@test -f "$(HBOS_DIR)/Makefile" || \
@@ -88,4 +101,4 @@ sync:
 	bash tools/sync-from-hbos.sh "$(HBOS_DIR)"
 
 clean:
-	rm -f $(BUILD_DIR)/test_hive_ui $(BUILD_DIR)/test_hive_pkg $(BUILD_DIR)/test_hive_winsrv
+	rm -rf "$(BUILD_DIR)"

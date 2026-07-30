@@ -3,7 +3,18 @@
 HIVE (HBOS Interface & Visual Environment) is a lightweight, modular desktop
 environment for HBOS. It provides the window manager, compositor, desktop
 shell, user-space GUI toolkit, and SDK for building independent graphical
-applications.
+applications. The [HPT package manager](https://github.com/HeBitOS/HPT) is a
+required Git submodule and ships in every regular HIVE build.
+
+## Clone
+
+```sh
+git clone --recurse-submodules https://github.com/HeBitOS/HIVE.git
+cd HIVE
+```
+
+For an existing checkout, initialize dependencies with
+`git submodule update --init --recursive`.
 
 ## Repository layout
 
@@ -29,6 +40,7 @@ src/
 tests/              Host-side SDK and interaction tests
 tools/              Resource generation utilities
 docs/               API reference and repository-boundary documentation
+HPT/                Required package manager Git submodule
 ```
 
 Applications under `app/` only include the public SDK and keep their UI state
@@ -42,13 +54,15 @@ Checkbox, List, Progress, Slider, Scrollbar, Menu, Image, Canvas, and Panel
 widgets; row/grid layout and widget trees; keyboard focus; hover/pressed states;
 pointer capture; text selection; and UTF-8-safe editing.
 
-HIVE also includes `hivepkg`, an apt-style package manager for disk-installed
-HAX applications. It supports local and IPv4 HTTP repositories, cached package
-metadata, search, dependencies, SHA-256 verification, install/remove/upgrade,
-and execution through `execve`. See
-[`docs/HIVE_PACKAGE_MANAGER.md`](docs/HIVE_PACKAGE_MANAGER.md).
+HIVE includes HPT, its apt-style package manager for disk-installed HAX
+applications, as a pinned Git submodule. HPT supports local and IPv4 HTTP
+repositories, cached metadata, search, dependencies, SHA-256 verification,
+install/remove/upgrade, and execution through `execve`. HIVE deliberately has
+no supported package-manager-free variant. Only a future fully kernel-only
+HBOS profile may omit the entire HIVE/HPT user-space stack. See the
+[HPT documentation](https://github.com/HeBitOS/HPT/blob/main/docs/HPT.md).
 
-The eight registration-based desktop applications are now independent HAX
+The registration-based desktop applications are now independent HAX
 processes. The desktop discovers them through HAX metadata, launches them
 asynchronously, and passes file paths to the image and hexadecimal viewers.
 Their former `src/gui/apps/` modules are no longer present or linked.
@@ -68,7 +82,8 @@ make test
 The host-side test validates the public widget ABI, input state machine, widget
 trees, layout helpers, slider dragging, mouse release behavior, text selection,
 UTF-8 editing, and the rule that independent applications cannot include
-desktop/kernel-private headers.
+desktop/kernel-private headers. It also runs HPT's parser, version, SHA-256,
+and repository-manifest tests.
 
 The transitional window server still depends on HBOS kernel contracts. Test it
 against a local HBOS checkout with:
@@ -77,17 +92,20 @@ against a local HBOS checkout with:
 make integration-test HBOS_DIR=/path/to/HBOS
 ```
 
-Build every independent application without building an ISO:
+Build every independent application, including HPT, without building an ISO:
 
 ```sh
 make apps HBOS_DIR=/path/to/HBOS
 ```
 
-Generate a local package repository from those application artifacts:
+Generate a local HPT repository from those application artifacts:
 
 ```sh
 make repo HBOS_DIR=/path/to/HBOS
 ```
+
+Serve the generated `build/repo` directory on Linux with
+[HPT-server](https://github.com/HeBitOS/HPT-server).
 
 ## Run
 
@@ -115,8 +133,8 @@ The command never overwrites `app/`, the public HIVE SDK, the desktop runtime,
 tests, resources, or documentation.
 
 For a complete HBOS image, use the [HBOS repository](https://github.com/HeBitOS/HBOS).
-The integration build supports `make core-only`, `make nogui`, and external
-applications through `APP_DIR=/path/to/apps`.
+HIVE's `apps`, `image`, `run`, and `run-uefi` targets stage HPT automatically
+and refuse to continue when the submodule is missing.
 
 ## License
 
