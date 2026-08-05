@@ -1,0 +1,23 @@
+# Linux reference build: verify Blink/V8 and web-platform acceptance tests
+# independently from the HBOS platform port.
+is_debug = false
+is_component_build = false
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+use_remoteexec = false
+use_siso = false
+is_official_build = false
+proprietary_codecs = false
+ffmpeg_branding = "Chromium"
+enable_remoting = false
+enable_widevine = false
+use_cups = false
+use_pulseaudio = false
+rtc_use_pipewire = false
+use_ozone = true
+ozone_auto_platforms = false
+ozone_platform = "headless"
+ozone_platform_headless = true
+ozone_platform_x11 = false
+ozone_platform_wayland = false

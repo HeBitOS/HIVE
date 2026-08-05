@@ -75,6 +75,14 @@ runtime itself. Several older tools implemented directly inside
 terminal) remain to be extracted while the desktop, resources, and compositor
 move from kernel-linked code to a ring3 service.
 
+The built-in browser is currently a lightweight static reader, not a complete
+JavaScript/DOM engine. The audited Vue/Pinia/Vite and media requirements for
+modern Bilibili, together with the staged dual-backend implementation plan, are
+documented in [`docs/BROWSER_BILIBILI_UPGRADE.md`](docs/BROWSER_BILIBILI_UPGRADE.md).
+The complete backend pins its upstream revision and separates the Linux
+reference build from the final HBOS port under
+[`browser/chromium/`](browser/chromium/README.md).
+
 ## Test
 
 ```sh
