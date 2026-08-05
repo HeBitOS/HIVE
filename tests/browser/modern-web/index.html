@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>HIVE modern web acceptance</title>
+  <style>
+    :root { --hive-accent: rgb(39, 174, 96); }
+    #grid { display: grid; grid-template-columns: 1fr 1fr; color: var(--hive-accent); }
+    .pass { color: var(--hive-accent); }
+    .fail { color: #c0392b; }
+  </style>
+</head>
+<body>
+  <h1>HIVE Blink/V8/Vue acceptance</h1>
+  <div id="grid"><span>HTML</span><span>CSS Grid</span></div>
+  <div id="app"><button id="counter">0</button><span id="doubled">0</span></div>
+  <pre id="results">RUNNING</pre>
+  <script type="module" src="./acceptance.js"></script>
+</body>
+</html>

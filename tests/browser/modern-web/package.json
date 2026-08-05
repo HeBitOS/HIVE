@@ -1,0 +1,9 @@
+{
+  "name": "hive-modern-web-acceptance",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Offline Blink/V8/Vue 3 acceptance page for the HIVE Chromium backend",
+  "dependencies": {
+    "vue": "3.5.40"
+  }
+}
