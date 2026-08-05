@@ -86,6 +86,7 @@ typedef struct gui_state {
      * browser_page 保持纯文本供“保存网页”使用。 */
     char browser_render[BROWSER_PAGE_CAP];
     uint32_t browser_render_len;
+    uint64_t browser_required_caps; /* Web features required by the current document */
     int browser_loaded;
     int browser_scroll;
     /* 每次渲染页面时 browser_render_from_html() 填好的链接 href 表，

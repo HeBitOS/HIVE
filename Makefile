@@ -8,13 +8,17 @@ PKG_REPO_DIR ?= $(CURDIR)/$(BUILD_DIR)/repo
 HPT_DIR ?= $(CURDIR)/HPT
 APP_STAGE_DIR ?= $(CURDIR)/$(BUILD_DIR)/app-src
 
-.PHONY: all help check-hpt test test-app-boundaries integration-test stage-apps apps repo image run start run-uefi sync clean
+.PHONY: all help check-hpt test browser-test modern-web-test bilibili-home-smoke bilibili-video-smoke test-app-boundaries integration-test stage-apps apps repo image run start run-uefi sync clean
 
 all: test
 
 help:
 	@echo "HIVE targets:"
 	@echo "  make test              Run standalone Toolkit API tests"
+	@echo "  make browser-test      Check browser capability gates"
+	@echo "  make modern-web-test   Run Blink/V8/Vue acceptance (set HIVE_CONTENT_SHELL)"
+	@echo "  make bilibili-home-smoke  Probe Bilibili home through CDP"
+	@echo "  make bilibili-video-smoke Probe a video URL (set HIVE_BILIBILI_VIDEO_URL)"
 	@echo "  make integration-test  Test the runtime against HBOS kernel contracts"
 	@echo "  make apps              Build all HIVE apps, including mandatory HPT"
 	@echo "  make repo              Build a local HPT repository"
@@ -30,6 +34,21 @@ $(BUILD_DIR):
 $(BUILD_DIR)/test_hive_ui: tests/test_hive_ui.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
 
+$(BUILD_DIR)/test_browser_backend: tests/test_browser_backend.c src/gui/browser_backend.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -Isrc/gui $^ -o $@
+
+browser-test: $(BUILD_DIR)/test_browser_backend
+	$(BUILD_DIR)/test_browser_backend
+
+modern-web-test:
+	tests/browser/modern-web/run_content_shell.sh
+
+bilibili-home-smoke:
+	node tests/browser/bilibili_probe.mjs
+
+bilibili-video-smoke:
+	node tests/browser/bilibili_probe.mjs --video "$(HIVE_BILIBILI_VIDEO_URL)"
+
 test-app-boundaries:
 	bash tests/test_app_boundaries.sh
 
@@ -39,7 +58,7 @@ check-hpt:
 		test -f "$(HPT_DIR)/tools/hpt_repo.py" || \
 		{ echo "HPT submodule is missing; run: git submodule update --init --recursive" >&2; exit 2; }
 
-test: check-hpt $(BUILD_DIR)/test_hive_ui test-app-boundaries
+test: check-hpt $(BUILD_DIR)/test_hive_ui browser-test test-app-boundaries
 	$(BUILD_DIR)/test_hive_ui
 	$(MAKE) -C "$(HPT_DIR)" test
 	python3 "$(HPT_DIR)/tools/hpt_repo.py" check packages/manifest.json

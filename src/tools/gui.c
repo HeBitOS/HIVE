@@ -29,6 +29,7 @@
 #include "../gui/gui_state.h"
 #include "../gui/gui_dirty.h"
 #include "../gui/gui_draw.h"
+#include "../gui/browser_backend.h"
 #include "../rtc_tz.h"
 #include "../shell/shell.h"
 #include "tool.h"
@@ -4702,6 +4703,7 @@ static void browser_init(gui_state_t *st) {
     st->browser_url_cursor = (uint32_t)strlen(st->browser_url);
     browser_set_plain(st, "输入网址后按 Enter 加载。当前 HTTPS 支持 TLS 1.3 + ChaCha20-Poly1305；部分网站会自动尝试 HTTP。");
     st->browser_scroll = 0;
+    st->browser_required_caps = HIVE_WEB_CAP_HTML_STATIC;
     st->browser_loaded = 1;
 }
 
@@ -4982,6 +4984,8 @@ static void browser_load_internal(gui_state_t *st, int push_history) {
         st->browser_url_cursor = (uint32_t)strlen(st->browser_url);
     }
     const char *body = http_body_ptr(response);
+    st->browser_required_caps =
+        hive_browser_detect_requirements(body, strlen(body));
     browser_text_from_html(body, st->browser_page, BROWSER_PAGE_CAP, &st->browser_page_len);
     browser_render_from_html(st, body, st->browser_render, BROWSER_PAGE_CAP, &st->browser_render_len);
     /* og 卡片：视频页（和其他 CSR 页面）body 几乎是空的，但 <head> 里有
@@ -5703,6 +5707,7 @@ static void br_icon_reload(int cx, int cy, uint32_t col, uint32_t bg) {
 
 static void draw_browser_app(int tx, int ty, int win_w, int win_h, gui_state_t *st) {
     browser_init(st);
+    const hive_browser_backend_t *browser_backend = hive_browser_lite_backend();
     int wx = tx - 29;            /* 窗口内区左边缘（win_x+1） */
     int ww = win_w - 2;          /* 窗口内区宽度 */
     if (ww < 340) ww = 340;
@@ -5735,6 +5740,9 @@ static void draw_browser_app(int tx, int ty, int win_w, int win_h, gui_state_t *
     /* 新建标签 +（纯装饰，和 Chrome 一样放在标签右侧） */
     rect(tab_x + tab_w + 12, ty + BR_TAB_H / 2, 11, 1, icon_dis);
     rect(tab_x + tab_w + 17, ty + BR_TAB_H / 2 - 5, 1, 11, icon_dis);
+    /* Keep the active engine visible: SSR text is not proof that Vue ran. */
+    text_clipped(wx + ww - 62, ty + 9, wx + ww - 26,
+                 browser_backend->name, rgb(150, 156, 166), 1);
 
     /* 工具栏 */
     rect(wx, ty + BR_TAB_H, ww, BR_TOOL_H, tool_bg);
@@ -5807,6 +5815,18 @@ static void draw_browser_app(int tx, int ty, int win_w, int win_h, gui_state_t *
      * （加载中/出错文本都显示在那里，Chrome 底部状态气泡的等价物）。 */
     int page_h = win_h - 42 - (BR_TAB_H + BR_TOOL_H) - 32;
     if (page_h < 80) page_h = 80;
+    uint64_t missing_caps = st->browser_required_caps &
+                            ~browser_backend->capabilities;
+    if (missing_caps) {
+        uint64_t first = missing_caps & (~missing_caps + 1ULL);
+        rect(wx, page_y, ww, 26, rgb(255, 244, 204));
+        text(wx + 12, page_y + 5, "Lite 未执行页面能力:", rgb(112, 78, 12), 1);
+        text_clipped(wx + 160, page_y + 5, wx + ww - 12,
+                     hive_browser_capability_name(first), rgb(112, 78, 12), 1);
+        page_y += 26;
+        page_h -= 26;
+        if (page_h < 54) page_h = 54;
+    }
     int inner_h = page_h - 20;
     int total = 0, max_scroll = 0, visible_rows = 0;
     for (int pass = 0; pass < 2; pass++) {
@@ -8987,7 +9007,16 @@ static void cmd_gui(int argc, char **argv) {
                                     last_title_click = frame_tick;
                                     st.status = "拖动窗口";
                                 }
-                            } else if (st.app_mode != GUI_APP_NONE) {
+                            } else {
+                                /* Client-area clicks activate the topmost window
+                                 * under the pointer.  Routing only from app_mode
+                                 * left background windows inert until their
+                                 * titlebar was clicked. */
+                                int content_idx = gui_window_at(&st, w, h, mx, my);
+                                if (content_idx >= 0 && content_idx != st.wm.active_window)
+                                    gui_focus_window(&st, content_idx);
+
+                                if (content_idx >= 0 && st.app_mode != GUI_APP_NONE) {
                                 int code_cmd = hit_code_command(w, h, &st, mx, my);
                                 if (code_cmd == CODE_CMD_GUI_RUN) {
                                     code_gui_run(&st, &fb);
@@ -9045,15 +9074,7 @@ static void cmd_gui(int argc, char **argv) {
                                         }
                                     }
                                 }
-                            } else {
-                                int dico = hit_desktop_icon(mx, my);
-                                if (dico >= 0) {
-                                    const desktop_icon_t *d = &g_desktop_icons[dico];
-                                    if (d->kind == WM_WIN_PANEL)
-                                        gui_open_panel_window(&st, d->mode);
-                                    else
-                                        gui_open_window(&st, WM_WIN_APP, d->mode, 0);
-                                } else {
+                                } else if (content_idx >= 0) {
                                     int action = hit_action(w, h, &st, mx, my);
                                     if (action >= FILE_ACTION_BASE) {
                                         if (action >= APP_ACTION_BASE) {
@@ -9072,6 +9093,18 @@ static void cmd_gui(int argc, char **argv) {
                                         }
                                     } else if (action >= 0) {
                                         handle_action(&st, action);
+                                    }
+                                } else {
+                                    /* Exposed desktop shortcuts remain clickable
+                                     * while windows exist, but never click through
+                                     * a window covering the same point. */
+                                    int dico = hit_desktop_icon(mx, my);
+                                    if (dico >= 0) {
+                                        const desktop_icon_t *d = &g_desktop_icons[dico];
+                                        if (d->kind == WM_WIN_PANEL)
+                                            gui_open_panel_window(&st, d->mode);
+                                        else
+                                            gui_open_window(&st, WM_WIN_APP, d->mode, 0);
                                     }
                                 }
                             }
