@@ -49,10 +49,11 @@ inside `hive_ui_t`. They must not include desktop-private headers such as
 
 ## Current status
 
-HIVE `0.1-beta5-gui.3` provides Toolkit API 1.3: Label, Button, Textbox,
-Checkbox, List, Progress, Slider, Scrollbar, Menu, Image, Canvas, and Panel
-widgets; row/grid layout and widget trees; keyboard focus; hover/pressed states;
-pointer capture; text selection; and UTF-8-safe editing.
+HIVE `0.1-beta5-gui.4` provides Toolkit API 1.4: Label, Button, Textbox,
+Checkbox, Radio, Toggle, List, Dropdown, Progress, Slider, Spinbox, Scrollbar,
+Menu, Image, Canvas, Panel, Groupbox, and Separator widgets; row/grid layout
+and widget trees; keyboard focus; hover/pressed states; pointer capture; text
+selection; and UTF-8-safe editing.
 
 HIVE includes HPT, its apt-style package manager for disk-installed HAX
 applications, as a pinned Git submodule. HPT supports local and IPv4 HTTP
@@ -130,6 +131,23 @@ make run
 `make image` to build without starting QEMU. If HBOS is elsewhere, pass
 `HBOS_DIR=/path/to/HBOS`. Integration artifacts are kept under
 `build/hbos/` in this repository.
+
+## PDF reference manual
+
+The compact, ink-saving API reference (`HBOS_HAX_API.pdf`, pure grayscale,
+no background fills) is generated from `docs/HBOS_HAX_API.html` with
+[WeasyPrint](https://weasyprint.org):
+
+```sh
+make pdf
+```
+
+The first run bootstraps a local WeasyPrint environment under
+`build/pdfenv/` (requires `python3-venv` and network access); afterwards the
+target reuses it. Override with `PDF_PYTHON=/path/to/python` to use an
+existing WeasyPrint installation. The print stylesheet compacts the layout
+(A4, 8.8 pt body) and forces a limited grayscale palette so the printed
+manual uses as little ink as possible.
 
 ## Synchronizing the transitional mirror
 

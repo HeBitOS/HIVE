@@ -12,7 +12,14 @@ enum {
     ID_PROGRESS,
     ID_ADD,
     ID_RESET,
-    ID_STATUS
+    ID_STATUS,
+    ID_GROUP,
+    ID_RADIO_A,
+    ID_RADIO_B,
+    ID_TOGGLE,
+    ID_DROPDOWN,
+    ID_SPINBOX,
+    ID_SEP
 };
 
 static char name_buf[48] = "HIVE";
@@ -21,6 +28,11 @@ static const char *const choices[] = {
     "轻量模式",
     "兼容模式",
     "开发模式"
+};
+static const char *const zooms[] = {
+    "缩放 100%",
+    "缩放 125%",
+    "缩放 150%"
 };
 
 static void layout_widgets(hive_ui_t *ui, int width, int height) {
@@ -40,6 +52,22 @@ static void layout_widgets(hive_ui_t *ui, int width, int height) {
     hive_ui_widget(ui, ID_LIST)->rect = hive_layout_row(&layout, 72);
     hive_ui_widget(ui, ID_SLIDER)->rect = hive_layout_row(&layout, 28);
     hive_ui_widget(ui, ID_PROGRESS)->rect = hive_layout_row(&layout, 20);
+
+    /* Toolkit 1.4：Groupbox 内互斥的 Radio 对。 */
+    hive_rect_t group = hive_layout_row(&layout, 66);
+    hive_ui_widget(ui, ID_GROUP)->rect = group;
+    HI32 half = group.w / 2;
+    hive_ui_widget(ui, ID_RADIO_A)->rect = hive_rect(12, 10, half - 20, 22);
+    hive_ui_widget(ui, ID_RADIO_B)->rect = hive_rect(12, 36, half - 20, 22);
+    hive_ui_widget(ui, ID_TOGGLE)->rect =
+        hive_rect(half + 8, 23, group.w - half - 20, 22);
+
+    /* Toolkit 1.4：Dropdown + Spinbox 微调行。 */
+    hive_rect_t pickers = hive_layout_row(&layout, 26);
+    hive_ui_widget(ui, ID_DROPDOWN)->rect = hive_grid_cell(pickers, 2, 12, 0);
+    hive_ui_widget(ui, ID_SPINBOX)->rect = hive_grid_cell(pickers, 2, 12, 1);
+
+    hive_ui_widget(ui, ID_SEP)->rect = hive_layout_row(&layout, 10);
 
     hive_rect_t actions = hive_layout_row(&layout, 36);
     hive_ui_widget(ui, ID_ADD)->rect = hive_grid_cell(actions, 2, 12, 0);
@@ -61,7 +89,7 @@ int main(int argc, char **argv) {
     (void)argv;
 
     int width = 460;
-    int height = 350;
+    int height = 500;
     if (hive_window_open("HIVE 控件", width, height) < 0) {
         hax_println("widgets 需要从 HIVE 桌面启动。");
         return 1;
@@ -70,7 +98,7 @@ int main(int argc, char **argv) {
     hive_ui_t ui;
     hive_ui_init(&ui);
     hive_ui_add_label(&ui, ID_TITLE, hive_rect(0, 0, 1, 1),
-                      "HIVE UI Toolkit 1.1");
+                      "HIVE UI Toolkit 1.4");
     hive_ui_add_textbox(&ui, ID_NAME, hive_rect(0, 0, 1, 1),
                         name_buf, (HI32)sizeof(name_buf));
     hive_ui_add_checkbox(&ui, ID_ENABLED, hive_rect(0, 0, 1, 1),
@@ -81,6 +109,18 @@ int main(int argc, char **argv) {
                        0, 100, 35, 5);
     hive_ui_add_progress(&ui, ID_PROGRESS, hive_rect(0, 0, 1, 1),
                          0, 100, 35);
+    hive_ui_add_groupbox(&ui, ID_GROUP, hive_rect(0, 0, 1, 1), "渲染模式");
+    hive_ui_add_radio(&ui, ID_RADIO_A, hive_rect(0, 0, 1, 1), "标准渲染", 1);
+    hive_ui_add_radio(&ui, ID_RADIO_B, hive_rect(0, 0, 1, 1), "增强渲染", 0);
+    hive_ui_set_parent(&ui, ID_RADIO_A, ID_GROUP);
+    hive_ui_set_parent(&ui, ID_RADIO_B, ID_GROUP);
+    hive_ui_add_toggle(&ui, ID_TOGGLE, hive_rect(0, 0, 1, 1), "启用微调", 1);
+    hive_ui_set_parent(&ui, ID_TOGGLE, ID_GROUP);
+    hive_ui_add_dropdown(&ui, ID_DROPDOWN, hive_rect(0, 0, 1, 1),
+                         zooms, 3, 0);
+    hive_ui_add_spinbox(&ui, ID_SPINBOX, hive_rect(0, 0, 1, 1),
+                        0, 100, 35, 5);
+    hive_ui_add_separator(&ui, ID_SEP, hive_rect(0, 0, 1, 1), 0);
     hive_ui_add_button(&ui, ID_ADD, hive_rect(0, 0, 1, 1), "增加 10%");
     hive_ui_add_button(&ui, ID_RESET, hive_rect(0, 0, 1, 1), "重置");
     hive_ui_add_label(&ui, ID_STATUS, hive_rect(0, 0, 1, 1), status_buf);
@@ -110,8 +150,24 @@ int main(int argc, char **argv) {
                        event.widget_id == ID_SLIDER) {
                 hive_ui_set_value(&ui, ID_PROGRESS, event.value);
                 update_status(&ui, "滑杆已调整");
-            } else if (event.type == HIVE_EVENT_SELECT) {
+            } else if (event.type == HIVE_EVENT_SELECT &&
+                       event.widget_id == ID_LIST) {
                 update_status(&ui, choices[event.value]);
+            } else if (event.type == HIVE_EVENT_SELECT) {
+                update_status(&ui, zooms[event.value]);
+            } else if (event.type == HIVE_EVENT_CHANGE &&
+                       (event.widget_id == ID_RADIO_A ||
+                        event.widget_id == ID_RADIO_B)) {
+                update_status(&ui, event.widget_id == ID_RADIO_A ?
+                              "标准渲染" : "增强渲染");
+            } else if (event.type == HIVE_EVENT_CHANGE &&
+                       event.widget_id == ID_TOGGLE) {
+                hive_ui_set_enabled(&ui, ID_SPINBOX, event.value);
+                update_status(&ui, event.value ? "微调已启用" : "微调已停用");
+            } else if (event.type == HIVE_EVENT_CHANGE &&
+                       event.widget_id == ID_SPINBOX) {
+                hive_ui_set_value(&ui, ID_PROGRESS, event.value);
+                update_status(&ui, "微调已调整");
             } else if (event.type == HIVE_EVENT_SUBMIT ||
                        (event.type == HIVE_EVENT_CHANGE &&
                         event.widget_id == ID_NAME)) {

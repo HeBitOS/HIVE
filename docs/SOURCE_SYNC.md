@@ -2,7 +2,7 @@
 
 The initial HIVE source import was taken from HBOS commit `2febb64` on
 2026-07-28. The mirror was refreshed from the HBOS `main` worktree on
-2026-07-29 for HIVE `0.1-beta5-gui.3` / Toolkit API 1.3.
+2026-08-14 for HIVE `0.1-beta5-gui.4` / Toolkit API 1.4.
 
 ## Ownership
 

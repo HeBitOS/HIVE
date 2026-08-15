@@ -1,6 +1,7 @@
 CC ?= cc
 BUILD_DIR ?= build
 CFLAGS ?= -O2 -Wall -Wextra
+PDF_PYTHON ?= python3
 HBOS_DIR ?= $(if $(wildcard ../HBOS/Makefile),../HBOS,$(if $(wildcard ../hbosv2/Makefile),../hbosv2,../HBOS))
 HBOS_BUILD_DIR ?= $(CURDIR)/$(BUILD_DIR)/hbos
 HBOS_RUN_TARGET ?= run
@@ -8,7 +9,7 @@ PKG_REPO_DIR ?= $(CURDIR)/$(BUILD_DIR)/repo
 HPT_DIR ?= $(CURDIR)/HPT
 APP_STAGE_DIR ?= $(CURDIR)/$(BUILD_DIR)/app-src
 
-.PHONY: all help check-hpt test browser-test modern-web-test bilibili-home-smoke bilibili-video-smoke test-app-boundaries integration-test stage-apps apps repo image run start run-uefi sync clean
+.PHONY: all help check-hpt test browser-test modern-web-test bilibili-home-smoke bilibili-video-smoke test-app-boundaries integration-test stage-apps apps repo image run start run-uefi sync pdf clean
 
 all: test
 
@@ -26,6 +27,7 @@ help:
 	@echo "  make run / make start  Build and start HIVE in QEMU (BIOS)"
 	@echo "  make run-uefi          Build and start HIVE in QEMU (UEFI)"
 	@echo "  make sync              Refresh the transitional mirror from HBOS"
+	@echo "  make pdf               Build compact ink-saving API reference PDF"
 	@echo "  Override HBOS_DIR=/path/to/HBOS when it is not a sibling checkout"
 
 $(BUILD_DIR):
@@ -118,6 +120,18 @@ sync:
 	@test -f "$(HBOS_DIR)/Makefile" || \
 		{ echo "HBOS checkout not found at $(HBOS_DIR); set HBOS_DIR=/path/to/HBOS" >&2; exit 2; }
 	bash tools/sync-from-hbos.sh "$(HBOS_DIR)"
+
+pdf: docs/HBOS_HAX_API.html tools/genpdf.py
+	@PDF_RUN="$(PDF_PYTHON)"; \
+	if [ -x "$(BUILD_DIR)/pdfenv/bin/python" ]; then \
+		PDF_RUN="$(BUILD_DIR)/pdfenv/bin/python"; \
+	elif ! python3 -c 'import weasyprint' 2>/dev/null; then \
+		echo "bootstrapping WeasyPrint into $(BUILD_DIR)/pdfenv ..."; \
+		python3 -m venv "$(BUILD_DIR)/pdfenv" && \
+		"$(BUILD_DIR)/pdfenv/bin/pip" install --quiet weasyprint && \
+		PDF_RUN="$(BUILD_DIR)/pdfenv/bin/python"; \
+	fi; \
+	$$PDF_RUN tools/genpdf.py
 
 clean:
 	rm -rf "$(BUILD_DIR)"
