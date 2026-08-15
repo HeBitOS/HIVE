@@ -29,6 +29,7 @@ app/
 ├── settings.c      Independent settings frontend
 ├── shortcuts.c     Independent shortcut reference
 ├── taskmgr.c       Independent process-signal frontend
+├── tui.c           TUI (text terminal) control showcase
 ├── widgets.c       HIVE toolkit showcase
 └── wdemo.c         Independent windowed application example
 src/
@@ -54,6 +55,13 @@ Checkbox, Radio, Toggle, List, Dropdown, Progress, Slider, Spinbox, Scrollbar,
 Menu, Image, Canvas, Panel, Groupbox, and Separator widgets; row/grid layout
 and widget trees; keyboard focus; hover/pressed states; pointer capture; text
 selection; and UTF-8-safe editing.
+
+The SDK also ships TUI Kit 1.0 (`app/include/hax_tui.h`): text-terminal
+controls for `HAX_KIND_TUI` apps — title rules, progress bars, ASCII boxes and
+tables, plus line-driven menu, confirm, input, and checkbox interactions. It is
+pure user-space (no new syscalls), UTF-8-aware (CJK counted as two display
+cells, truncation never splits codepoints), and EOF-safe: every interactive
+control returns -1 instead of looping forever when stdin is exhausted.
 
 HIVE includes HPT, its apt-style package manager for disk-installed HAX
 applications, as a pinned Git submodule. HPT supports local and IPv4 HTTP
@@ -93,7 +101,9 @@ make test
 The host-side test validates the public widget ABI, input state machine, widget
 trees, layout helpers, slider dragging, mouse release behavior, text selection,
 UTF-8 editing, and the rule that independent applications cannot include
-desktop/kernel-private headers. It also runs HPT's parser, version, SHA-256,
+desktop/kernel-private headers. It also runs the TUI kit tests (display-cell
+counting, UTF-8-safe truncation, progress/table/box rendering, and menu/confirm
+parsing) and HPT's parser, version, SHA-256,
 and repository-manifest tests.
 
 The transitional window server still depends on HBOS kernel contracts. Test it

@@ -36,6 +36,9 @@ $(BUILD_DIR):
 $(BUILD_DIR)/test_hive_ui: tests/test_hive_ui.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
 
+$(BUILD_DIR)/test_hive_tui: tests/test_hive_tui.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -Iapp/include -Isrc/user $< -o $@
+
 $(BUILD_DIR)/test_browser_backend: tests/test_browser_backend.c src/gui/browser_backend.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -Isrc/gui $^ -o $@
 
@@ -60,8 +63,9 @@ check-hpt:
 		test -f "$(HPT_DIR)/tools/hpt_repo.py" || \
 		{ echo "HPT submodule is missing; run: git submodule update --init --recursive" >&2; exit 2; }
 
-test: check-hpt $(BUILD_DIR)/test_hive_ui browser-test test-app-boundaries
+test: check-hpt $(BUILD_DIR)/test_hive_ui $(BUILD_DIR)/test_hive_tui browser-test test-app-boundaries
 	$(BUILD_DIR)/test_hive_ui
+	$(BUILD_DIR)/test_hive_tui
 	$(MAKE) -C "$(HPT_DIR)" test
 	python3 "$(HPT_DIR)/tools/hpt_repo.py" check packages/manifest.json
 	@echo "HIVE host tests passed"

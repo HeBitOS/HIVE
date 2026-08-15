@@ -18,6 +18,11 @@
 #define HIVE_VERSION_STRING "0.1-beta5-gui.4"
 #define HIVE_VERSION_TAG "HIVE " HIVE_VERSION_STRING
 
+/* TUI 控件套件（hax_tui.h）独立编号，不随 GUI 修订递增。 */
+#define HIVE_TUI_API_MAJOR HAX_TUI_ABI_MAJOR
+#define HIVE_TUI_API_MINOR HAX_TUI_ABI_MINOR
+#define HIVE_TUI_API_VERSION_STRING "1.0"
+
 /** 声明一个由 HIVE 桌面异步启动的独立窗口应用。 */
 #define HIVE_APP(name, description) \
     HAX_APP((name), (description), HAX_KIND_GUI | HAX_KIND_GUI_WIN)

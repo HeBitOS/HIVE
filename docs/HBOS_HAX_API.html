@@ -103,7 +103,7 @@
   <div style="height:4.5cm;"></div>
   <div style="background:#14a6e0; color:#fff; padding:22px 18px; font-size:11pt; font-weight:600;">
     HBOS APPLICATION DEVELOPER GUIDE<br>
-    <span style="font-size:9.5pt; font-weight:400;">2026/08/14 &nbsp;·&nbsp; VERSION 1.7 &nbsp;·&nbsp; HBOS v0.1-beta5 &nbsp;·&nbsp; HIVE 0.1-beta5-gui.4（Toolkit API 1.4）</span>
+    <span style="font-size:9.5pt; font-weight:400;">2026/08/15 &nbsp;·&nbsp; VERSION 1.8 &nbsp;·&nbsp; HBOS v0.1-beta5 &nbsp;·&nbsp; HIVE 0.1-beta5-gui.4（Toolkit API 1.4 / TUI Kit 1.0）</span>
   </div>
 </div>
 
@@ -134,6 +134,7 @@
   <div class="s">2.7 GUI 全屏画布接口</div>
   <div class="s">2.8 并发窗口接口（推荐）</div>
   <div class="s">2.9 HIVE 标准窗口控件 API</div>
+  <div class="s">2.10 TUI 终端控件 API</div>
   <div class="c">第 3 章 — 运行、发现与调试</div>
   <div class="s">3.1 TUI 与 GUI 类型说明</div>
   <div class="s">3.2 apps / run 命令</div>
@@ -534,6 +535,46 @@ done: hive_window_close();</pre>
 <div class="warn">HIVE Toolkit API 1.4 能按 UTF-8 码点移动、鼠标/键盘选择、替换和删除已有文本；
 窗口键盘事件目前仍只直接产生可打印 ASCII，完整中文输入法、系统剪贴板和无障碍语义
 将在后续版本追加。</div>
+
+<h2>2.10 TUI 终端控件 API</h2>
+<p><code>#include &lt;hax.h&gt;</code> 随 <code>hax_tui.h</code> 提供一套文本终端控件
+（<b>TUI Kit API 1.0</b>，<code>HIVE_TUI_API_MAJOR/MINOR=1/0</code>）。与窗口控件
+一样纯用户态、无新增系统调用、无全局变量、无动态内存：输出只依赖 stdout，
+输入只依赖 stdin（<code>hax_input</code> 读整行），在内核控制台和图形终端中行为
+一致。渲染刻意使用纯 ASCII（<code>+ - | = [ ]</code>），对齐按显示格计算
+（CJK/全角字符占 2 格），截断不会切断 UTF-8 码点。</p>
+<table>
+<tr><th>控件</th><th>函数</th><th>说明</th></tr>
+<tr><td>标题分隔线</td><td><code>hax_tui_rule / hax_tui_hline</code></td><td>带标题或纯横线</td></tr>
+<tr><td>进度条</td><td><code>hax_tui_progress</code></td><td><code>[====----] 45%</code>；in_place 用 <code>\r</code> 原地刷新</td></tr>
+<tr><td>边框盒</td><td><code>hax_tui_box</code></td><td>标题嵌顶边的 ASCII 盒</td></tr>
+<tr><td>表格</td><td><code>hax_tui_table</code></td><td>列宽/对齐由 <code>hax_tui_column_t</code> 描述</td></tr>
+<tr><td>菜单</td><td><code>hax_tui_menu</code></td><td>数字 1..N 或快捷字母选择，q 取消</td></tr>
+<tr><td>确认</td><td><code>hax_tui_confirm</code></td><td><code>[Y/n]</code> 默认值，回车取默认</td></tr>
+<tr><td>输入行</td><td><code>hax_tui_input</code></td><td>带提示与默认值，UTF-8 安全截断</td></tr>
+<tr><td>复选</td><td><code>hax_tui_checkbox</code></td><td><code>[x]</code> 状态行 + y/n 切换</td></tr>
+</table>
+<p>交互控件都是行驱动的；空行取默认值，<code>q</code>/<code>Q</code> 取消（返回 -1），
+stdin 读到 EOF 同样返回 -1，因此即使被无输入管道启动也不会死循环。
+解析逻辑（<code>hax_tui_menu_parse</code> / <code>hax_tui_confirm_parse</code>）与
+渲染逻辑（<code>*_to</code> 系列）分离，便于宿主测试。</p>
+<pre>#include &lt;hive.h&gt;
+HAX_APP("svc", "服务管理", HAX_KIND_TUI);
+
+static const char *const items[] = {"启动服务", "停止服务", "查看状态"};
+
+int main(void) {
+    hax_tui_rule("服务管理", 40);
+    HI32 sel = hax_tui_menu("请选择操作", items, 3, NULL);
+    if (sel &lt; 0) return 0;                       /* q / EOF */
+    hax_printf("选择了：%s\n", items[sel]);
+    hax_tui_progress("执行", 100, 0, 100, 24, 1);
+    hax_println("");
+    return 0;
+}</pre>
+<div class="note"><code>hax_tui_progress</code> 的 in_place 模式依赖终端支持
+<code>\r</code> 回车不换行；HBOS 图形终端会丢弃 <code>\r</code>，此时退化为逐行
+输出（功能不受影响）。<code>app/tui.c</code> 是完整的控件展示应用。</div>
 </div>
 
 <!-- ── 第 3 章 ── -->

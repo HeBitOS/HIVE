@@ -578,4 +578,7 @@ static inline int hax_window_close(hax_window_t window) {
 /* HIVE 标准窗口控件（按钮、文本框、复选框、列表、滑杆等）。 */
 #include "hax_widgets.h"
 
+/* HAX 终端（TUI）控件（分隔线、进度条、表格、菜单、确认、输入、复选等）。 */
+#include "hax_tui.h"
+
 #endif /* HBOS_HAX_H */
