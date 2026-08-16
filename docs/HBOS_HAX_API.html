@@ -41,8 +41,10 @@
   li { margin: 3px 0; }
   .sig { font-family: ui-monospace,"DejaVu Sans Mono","Noto Sans Mono","Noto Sans CJK SC",monospace; font-size:9.5pt;
          background:#eef2f6; border-radius:3px; padding:3px 8px; display:block; margin:4px 0; }
+  .screenshot { display:block; max-width:92%; margin:8px auto 12px;
+                border:1px solid #b8c6d2; border-radius:4px; }
 
-  /* PDF/打印：紧凑灰阶，不印大面积底色，降低墨粉/油墨覆盖率。 */
+  /* PDF/打印：紧凑版式 + 少量彩色点缀，不印大面积底色，兼顾省墨。 */
   @media print {
     @page { size: A4; margin: 12mm 14mm 13mm; }
     * { print-color-adjust: economy; -webkit-print-color-adjust: economy;
@@ -50,6 +52,16 @@
     body { color:#111; font-size:8.8pt; line-height:1.34; }
     body * { color:#111 !important; background-color:transparent !important;
              border-color:#777 !important; }
+    /* 少量彩色点缀：标题/表头/封面用深蓝系，正文保持黑色。 */
+    h1 .en { color:#0a6fa0 !important; }
+    h2 { color:#0b5d8f !important; border-bottom-color:#8fb8d8 !important; }
+    .toc .c { color:#0b5d8f !important; }
+    th { color:#0b5d8f !important; }
+    .tag { color:#0a6fa0 !important; border-color:#8fb8d8 !important; }
+    pre { border-left-color:#4a9bc4 !important; }
+    .screenshot { border-color:#666 !important; }
+    body > div:first-child > div[style*="color:#0aa6dd"] {
+      color:#0a6fa0 !important; }
     h1 { font-size:18pt; margin:0 0 1px; }
     h1 .en { font-size:9.5pt; letter-spacing:.5px; margin-top:0; }
     h2 { font-size:11.5pt; margin:10px 0 3px; padding-bottom:1px;
@@ -103,7 +115,7 @@
   <div style="height:4.5cm;"></div>
   <div style="background:#14a6e0; color:#fff; padding:22px 18px; font-size:11pt; font-weight:600;">
     HBOS APPLICATION DEVELOPER GUIDE<br>
-    <span style="font-size:9.5pt; font-weight:400;">2026/08/15 &nbsp;·&nbsp; VERSION 1.8 &nbsp;·&nbsp; HBOS v0.1-beta5 &nbsp;·&nbsp; HIVE 0.1-beta5-gui.4（Toolkit API 1.4 / TUI Kit 1.0）</span>
+    <span style="font-size:9.5pt; font-weight:400;">2026/08/16 &nbsp;·&nbsp; VERSION 1.9 &nbsp;·&nbsp; HBOS v0.1-beta5 &nbsp;·&nbsp; HIVE 0.1-beta5-gui.4（Toolkit API 1.4 / TUI Kit 1.0）</span>
   </div>
 </div>
 
@@ -149,6 +161,7 @@
   <div class="s">4.5 GUI 全屏画布（文档示例）</div>
   <div class="s">4.6 HIVE 并发窗口（文档示例）</div>
   <div class="s">4.7 HIVE Toolkit API 1.4 控件（文档示例）</div>
+  <div class="s">4.8 实机运行画面（QEMU 截图）</div>
   <div class="c">附录 A — 底层 POSIX 系统调用速查</div>
   <div class="c">附录 B — hax_meta_t 二进制布局</div>
   <div class="c">附录 C — 常见构建错误排查</div>
@@ -872,6 +885,18 @@ while (hive_window_active(&amp;width, &amp;height)) {
 }</pre>
 <p class="small">提示：这些片段只用于 API 讲解；如需试验，请放入外部应用目录构建。</p>
 </div>
+
+<!-- ── 4.8 实机运行画面 ── -->
+<h2>4.8 实机运行画面（QEMU 截图）</h2>
+<p>以下画面来自 HBOS <code>v0.1-beta5-pre6</code> 在 QEMU（q35、1024M、1920×1080）
+中的真实运行截图，展示 HIVE 桌面、开始菜单（应用启动器，含 <code>widgets</code>
+控件展示应用）与 TUI Kit 演示（<code>tui</code>，在实机文本控制台运行）。</p>
+<img class="screenshot" src="screenshots/hive-desktop.jpg" alt="HIVE 桌面">
+<p class="small" style="text-align:center;">图 4-1：HIVE 桌面（任务栏、桌面图标与壁纸）</p>
+<img class="screenshot" src="screenshots/hive-apps.jpg" alt="HIVE 开始菜单">
+<p class="small" style="text-align:center;">图 4-2：开始菜单——应用启动器（搜索框 + 应用网格，含控件展示）</p>
+<img class="screenshot" src="screenshots/hive-tui.png" alt="TUI Kit 演示">
+<p class="small" style="text-align:center;">图 4-3：TUI Kit 1.0 演示在实机文本控制台运行（表格、边框盒、进度条、菜单）</p>
 
 <!-- ── 附录 A ── -->
 <div class="chapter">
