@@ -105,7 +105,7 @@ HIVE 浏览器外壳
 
 ### G1：补齐完整引擎所需的系统底座
 
-- 动态 ELF/PT_INTERP、线程/TLS、futex、epoll、共享内存、文件映射、大地址空间、
+- 动态 ELF/真实 musl、线程/TLS、futex、epoll、共享内存、文件映射、大地址空间、
   时钟/随机数、进程退出回收和资源限制。
 - 字体发现、FreeType/Harfbuzz 路径、剪贴板、IME、窗口 surface、缩放和输入事件。
 - 网络补齐 IPv6、非阻塞 socket、DNS A/AAAA、TLS 证书链、SNI/ALPN、HTTP/2、
@@ -164,7 +164,49 @@ HIVE 浏览器外壳
 - G1 已加入 futex wait/wake、bitset、绝对超时、robust-list `OWNER_DIED`、
   64 任务/128 FD 上限及 GNU hash 动态符号查找。加固后的线程用例已在 ring3
   QEMU 中得到 `LINUX_THREAD: PASS`。IPv6 和 X.509 验证路径已有实现，但
-  `PT_INTERP`、完整动态 TLS、`clone3`、signal/ucontext 仍是硬阻塞项。
+  `PT_INTERP` 最小解释器交接以及真实 musl 1.2.5 动态 hello 已在 HBOS QEMU
+  通过；普通 ring3 signal handler、`SA_RESTORER` 与 `rt_sigreturn` 也已由
+  QEMU 用例验证；628 KiB 共享对象的 VFS 流式 `dlopen/dlsym/dlclose` 亦已
+  通过，句柄与符号解析已按地址空间隔离。共享库 General Dynamic TLS
+  已支持 `PT_TLS`、`DTPMOD64/DTPOFF64`、`__tls_get_addr` 和按线程惰性实例，
+  真实 `__thread` 的 `.tdata/.tbss`、对齐与父子线程写隔离已由 QEMU 验证。
+  GNU 符号版本也已支持 `VERSYM/VERDEF/VERNEED`、默认版本和 `dlvsym`，并由
+  真实 version-script 共享库验证函数及 TLS 版本绑定。GNU IFUNC/IRELATIVE
+  resolver 也已改为 ring3 延迟执行并通过 CPL 检查回归。loader 已加入按 TID
+  递归事务锁、线程局部 `dlerror`、构造函数重入，以及四线程各 64 轮
+  `dlopen/dlsym/dlclose` 压力回归；内核跨地址空间对象链表也已保护。原生
+  `clone`/`clone3` 的 pthread 形态也已恢复子返回上下文、新栈、FS/TLS 与
+  TID 生命周期；未修改 musl 1.2.5 的四线程 create/join、mutex、condvar、
+  rwlock、once、realtime 超时、FPU 环境继承和静态 TLS 隔离已通过。
+  复杂 musl/glibc 依赖、完整 TLS descriptor/destructor、线程取消
+  时的锁恢复、`clone3` 的进程/pidfd/cgroup 形态、完整
+  `siginfo/ucontext`、altstack 与嵌套信号仍是硬阻塞项。
+- NX/EFER 位定义和 CPUID 门控已经修正，`mmap/mprotect` 会修改真实页表权限；
+  主 ELF、解释器和共享对象在装载/重定位后按 `PT_LOAD` 应用 W^X。RW→RX
+  JIT 形态用例已通过。部分 `munmap` VMA 拆分、匿名页/`brk` 回收、任务退出
+  地址空间销毁与 Linux `sysinfo` 已完成；连续启动/退出 12 次内存无增长，
+  `prlimit64/getrusage/prctl/tgkill/madvise/clock_nanosleep` 与 RTC+PIT 时钟
+  基线也已加入；普通 VFS 文件的私有快照及只读共享 `mmap` 已通过 ring3
+  QEMU；`dlopen` 已具备递归 `DT_NEEDED`、路径去重、强符号失败和引用级联
+  卸载；`DT_INIT/FINI` 与数组由用户 libc 在 ring3 按依赖顺序执行；按线程
+  General Dynamic TLS 也已纳入同一回归。未修改 glibc 2.43 的动态
+  loader/libc、符号版本、malloc 和基础 pthread/静态 TLS 也已通过。完整十八项
+  musl/glibc/Linux 门禁通过；同一 glibc 探针还覆盖轻量 procfs 的
+  self/exe、status、maps、fd、meminfo 与 cpuinfo，并枚举 CPU/网络只读
+  sysfs、读取实际 E1000 MAC 和链路状态；真实目录 fd 相对的
+  `openat/newfstatat/readlinkat/symlinkat/renameat*`、`AT_EMPTY_PATH`/nofollow、
+  ramfs/HBFS 最终及中间路径符号链接、普通文件三种 rename 入口、覆盖/
+  NOREPLACE 语义、ramfs/HBFS 目录整树迁移、cwd/打开目录 fd/后代 watch 跟随，
+  以及固定容量 inotify 的原生 syscall、同 cookie 移动事件、文件 watch 改名
+  跟随与 poll/epoll 就绪也已通过。AF_UNIX 的原生 syscall 51/52 与 libc
+  `getsockname/getpeername` 已覆盖 pathname/abstract 地址、短缓冲区完整长度、
+  未连接错误和 accept 真实对端地址，为后续 D-Bus 服务发现补齐 socket ABI。
+  用户 page fault 也已可进入 ring3 `SIGSEGV` handler；回归会 `mprotect` 修页、
+  经 `rt_sigreturn` 恢复完整通用寄存器并重试故障写入。原生 `fork` 已从 syscall
+  现场恢复子进程，私有 owned 页以引用计数实现 4 KiB COW；八轮 QEMU 压力覆盖
+  写 fault、`mprotect`、`MADV_DONTNEED`、父子隔离与回收。可写共享文件页缓存、
+  跨核 TLB shootdown、空页表即时裁剪、`SIGBUS` 与完整 siginfo/ucontext 仍是
+  Chromium 前置缺口。
 - Chromium Linux Stable 151.0.7922.71 已按精确 revision 外置同步；116 项
   hooks 全部通过，Headless Linux 参考配置已由 GN 成功生成。离线 Vue 3.5.40
   验收页已加入 `tests/browser/modern-web/`，等待 `content_shell` 构建完成后执行。
