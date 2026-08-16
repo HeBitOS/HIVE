@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
 
 #include "../acpi.h"
@@ -20,6 +21,7 @@
 #include "../string.h"
 #include "../tls.h"
 #include "../unistd.h"
+#include "../elf.h"
 #include "../user/app.h"
 #include "../user/hax_app.h"
 #include "../version.h"
@@ -29,7 +31,13 @@
 #include "../gui/gui_state.h"
 #include "../gui/gui_dirty.h"
 #include "../gui/gui_draw.h"
+#include "../gui/gui_app.h"
 #include "../gui/browser_backend.h"
+
+/* app_imgview.c / app_hexview.c 各自路径 setter，供 gui_open_selected_file()
+ * 打开对应查看器前写入要打开的文件路径 */
+void app_imgview_set_path(gui_state_t *st, const char *path);
+void app_hexview_set_path(gui_state_t *st, const char *path);
 #include "../rtc_tz.h"
 #include "../shell/shell.h"
 #include "tool.h"
@@ -123,11 +131,16 @@ typedef struct {
 
 static const gui_app_meta_t gui_apps[] = {
     {"记事本", "编辑笔记文件", GUI_APP_NOTES},
+    {"计算器", "方向键调整数值", GUI_APP_CALC},
     {"文件统计", "统计选中文件行数和字节", GUI_APP_UWC},
     {"贪吃蛇", "方向键移动", GUI_APP_SNAKE},
     {"浏览器", "打开 HTTP/HTTPS 网页", GUI_APP_BROWSER},
     {"代码工作台", "编辑、保存、运行 C 文件", GUI_APP_CODE},
     {"控制台终端", "运行命令与系统交互", GUI_APP_DIAG},
+    {"时钟", "实时时钟与日期", GUI_APP_CLOCK},
+    {"设置", "主题与字体", GUI_APP_SETTINGS},
+    {"任务管理器", "查看运行中的任务，结束任务", GUI_APP_TASKMGR},
+    {"快捷键", "查看全局和各应用的键盘快捷键", GUI_APP_SHORTCUTS},
 };
 
 static const gui_file_action_t gui_file_actions[FILE_ACTION_COUNT] = {
@@ -140,14 +153,8 @@ static const gui_file_action_t gui_file_actions[FILE_ACTION_COUNT] = {
     {"删除",   4},
 };
 
-static int gui_hax_count(void);
-static const hax_app_entry_t *gui_hax_at(int k);
-
-#define GUI_BUILTIN_APP_COUNT \
-    ((uint32_t)(sizeof(gui_apps) / sizeof(gui_apps[0])))
-
 static uint32_t gui_app_count(void) {
-    return GUI_BUILTIN_APP_COUNT + (uint32_t)gui_hax_count();
+    return (uint32_t)(sizeof(gui_apps) / sizeof(gui_apps[0]));
 }
 
 static file_t *selected_file(gui_state_t *st);
@@ -851,11 +858,17 @@ static void blit_icon(int x, int y, int sz, int id) {
 static int app_icon_id(int mode) {
     switch (mode) {
         case GUI_APP_NOTES:   return ICON_NOTES;
+        case GUI_APP_CALC:    return ICON_CALC;
         case GUI_APP_UWC:     return ICON_UWC;
         case GUI_APP_SNAKE:   return ICON_SNAKE;
         case GUI_APP_BROWSER: return ICON_BROWSER;
         case GUI_APP_CODE:    return ICON_CODE;
         case GUI_APP_DIAG:    return ICON_TERM;
+        case GUI_APP_CLOCK:    return ICON_CLOCK;
+        case GUI_APP_SETTINGS: return ICON_SYS;
+        case GUI_APP_FILES:    return ICON_FILES;
+        case GUI_APP_TASKMGR:  return ICON_SYS;
+        case GUI_APP_SHORTCUTS: return ICON_SHORTCUTS;
         default:               return ICON_APPS;
     }
 }
@@ -1029,6 +1042,55 @@ static void append_uint(char *buf, uint32_t cap, uint32_t *pos, uint32_t v) {
 static void append_int(char *buf, uint32_t cap, uint32_t *pos, int v) {
     if (v < 0) append_char(buf, cap, pos, '-');
     append_uint(buf, cap, pos, (uint32_t)(v < 0 ? -v : v));
+}
+
+static void append_uint64(char *buf, uint32_t cap, uint32_t *pos, unsigned long long v) {
+    char tmp[24];
+    uint32_t n = 0;
+    do {
+        tmp[n++] = (char)('0' + (v % 10));
+        v /= 10;
+    } while (v && n < sizeof(tmp));
+    while (n) append_char(buf, cap, pos, tmp[--n]);
+}
+
+static void append_ll(char *buf, uint32_t cap, uint32_t *pos, long long v) {
+    /* -v on LLONG_MIN overflows signed long long -- negate in unsigned
+     * space instead, which wraps around to the correct magnitude. */
+    if (v < 0) {
+        append_char(buf, cap, pos, '-');
+        append_uint64(buf, cap, pos, 0ULL - (unsigned long long)v);
+    } else {
+        append_uint64(buf, cap, pos, (unsigned long long)v);
+    }
+}
+
+/* Scientific-notation formatting for calculator results that overflow
+ * long long (see app_calc.c's calc_to_sci) -- pure integer arithmetic
+ * only, no float/double, since the kernel is built with SSE/x87 disabled
+ * (see Makefile's CFLAGS: -mno-80387 -mno-mmx -mno-sse -mno-sse2). mant is
+ * a <=9-significant-digit integer (any sign); the true value is
+ * approximately mant * 10^exp. Renders as "D.DDDDDDDDe+NN". */
+static void append_sci(char *buf, uint32_t cap, uint32_t *pos, long long mant, int exp) {
+    if (mant < 0) append_char(buf, cap, pos, '-');
+    unsigned long long m = mant < 0 ? (0ULL - (unsigned long long)mant) : (unsigned long long)mant;
+    char digits[20];
+    int nd = 0;
+    if (m == 0) digits[nd++] = '0';
+    while (m) { digits[nd++] = (char)('0' + (m % 10)); m /= 10; }
+    int total_exp = exp + (nd - 1);
+    append_char(buf, cap, pos, digits[nd - 1]);
+    append_char(buf, cap, pos, '.');
+    if (nd > 1) {
+        for (int i = nd - 2; i >= 0; i--) append_char(buf, cap, pos, digits[i]);
+    } else {
+        append_char(buf, cap, pos, '0');
+    }
+    append_char(buf, cap, pos, 'e');
+    append_char(buf, cap, pos, total_exp < 0 ? '-' : '+');
+    int e = total_exp < 0 ? -total_exp : total_exp;
+    if (e < 10) append_char(buf, cap, pos, '0');
+    append_uint(buf, cap, pos, (uint32_t)e);
 }
 
 static const char *gui_file_path(gui_state_t *st) {
@@ -1967,11 +2029,16 @@ static void draw_resource_panel(int tx, int ty, int win_w, int w, int h) {
 static uint32_t app_accent(int mode) {
     switch (mode) {
         case GUI_APP_NOTES:   return rgb(46, 204, 113);
+        case GUI_APP_CALC:    return rgb(52, 152, 219);
         case GUI_APP_UWC:     return rgb(241, 196, 15);
         case GUI_APP_SNAKE:   return rgb(39, 174, 96);
         case GUI_APP_BROWSER: return rgb(61, 174, 233);
         case GUI_APP_CODE:    return rgb(155, 89, 182);
         case GUI_APP_DIAG:    return rgb(230, 126, 34);
+        case GUI_APP_CLOCK:    return rgb(231, 76, 60);
+        case GUI_APP_SETTINGS: return rgb(149, 165, 166);
+        case GUI_APP_FILES:    return rgb(52, 152, 219);
+        case GUI_APP_SHORTCUTS: return rgb(39, 174, 96);
         default:               return rgb(61, 174, 233);
     }
 }
@@ -1979,7 +2046,7 @@ static uint32_t app_accent(int mode) {
 static int gui_app_grid_cols(int win_w) {
     int cols = (win_w - 8) / 132;
     if (cols < 2) cols = 2;
-    if (cols > 5) cols = 5;
+    if (cols > 5) cols = 5;   /* 5 列：9 个内置应用排 2 行，不溢出底部状态栏 */
     return cols;
 }
 
@@ -1989,7 +2056,7 @@ static void gui_app_tile_rect(int tx, int ty, int win_w, uint32_t i,
     int gap = 14;
     int cols = gui_app_grid_cols(win_w);
     int tw = (win_w - 8 - gap * (cols - 1)) / cols;
-    int th = 86;
+    int th = 112;
     int col = (int)(i % (uint32_t)cols);
     int row = (int)(i / (uint32_t)cols);
     *x = tx + col * (tw + gap);
@@ -2012,15 +2079,10 @@ static void draw_apps_panel(int tx, int ty, int win_w, const gui_state_t *st) {
     if ((uint32_t)selected >= gui_app_count()) selected = (int)gui_app_count() - 1;
 
     for (uint32_t i = 0; i < gui_app_count(); i++) {
-        const gui_app_meta_t *app =
-            i < GUI_BUILTIN_APP_COUNT ? &gui_apps[i] : 0;
-        const hax_app_entry_t *hax =
-            i >= GUI_BUILTIN_APP_COUNT ?
-                gui_hax_at((int)(i - GUI_BUILTIN_APP_COUNT)) : 0;
-        const char *name = app ? app->name : (hax ? hax->name : "应用");
+        const gui_app_meta_t *app = &gui_apps[i];
         int x, y, w, h;
         gui_app_tile_rect(tx, ty, cw, i, &x, &y, &w, &h);
-        uint32_t accent = app ? app_accent(app->mode) : rgb(61, 174, 233);
+        uint32_t accent = app_accent(app->mode);
         int sel = ((int)i == selected);
 
         // Translucent glass tile; selected gets an accent wash + ring.
@@ -2032,18 +2094,18 @@ static void draw_apps_panel(int tx, int ty, int win_w, const gui_state_t *st) {
             rect(x + w - 1, y + 10, 1, h - 20, accent);
         }
 
-        int isz = ui_s(40), ix = x + (w - isz) / 2, iy = y + ui_s(10);
-        blit_icon(ix, iy, isz, app ? app_icon_id(app->mode) : ICON_APPS);
+        int isz = ui_s(52), ix = x + (w - isz) / 2, iy = y + ui_s(16);
+        blit_icon(ix, iy, isz, app_icon_id(app->mode));
 
-        int tw = text_width(name, 1);
+        int tw = text_width(app->name, 1);
         int lx = x + (w - tw) / 2;
         if (lx < x + 4) lx = x + 4;
-        text(lx, y + h - 26, name,
+        text(lx, y + h - 26, app->name,
              sel ? rgb(255, 255, 255) : rgb(228, 232, 236), 1);
     }
     uint32_t cols = (uint32_t)gui_app_grid_cols(cw);
     uint32_t rows = (gui_app_count() + cols - 1) / cols;
-    text(tx, ty + 64 + (int)rows * 100 + 6,
+    text(tx, ty + 64 + (int)rows * 126 + 6,
          "单击图标启动 · 方向键选择 · Enter 打开",
          rgb(200, 206, 212), 1);
 }
@@ -3206,9 +3268,15 @@ static void draw_diag_app(int tx, int ty, int win_w, int win_h, gui_state_t *st)
     int box_w = win_w - 20 - sb_w - 4;
     int box_h = win_h - 74;
 
-    // Flat Breeze terminal surface.
-    rect(box_x, box_y, box_w, box_h, rgb(27, 30, 33));
-    border(box_x, box_y, box_w, box_h, rgb(60, 64, 69));
+    // Flat Breeze terminal surface. 跟随浅色/深色主题。
+    int light = st->theme_light;
+    uint32_t term_bg  = light ? rgb(243, 245, 248) : rgb(27, 30, 33);
+    uint32_t term_bd  = light ? rgb(188, 194, 202) : rgb(60, 64, 69);
+    uint32_t term_fg  = light ? rgb(38, 44, 52)    : rgb(220, 226, 232);
+    uint32_t term_dim = light ? rgb(118, 128, 140) : rgb(160, 167, 173);
+    uint32_t term_prompt = light ? rgb(16, 110, 60) : rgb(39, 174, 96);
+    rect(box_x, box_y, box_w, box_h, term_bg);
+    border(box_x, box_y, box_w, box_h, term_bd);
 
     int row_h = MONO_GLYPH_H + 2;          // 8x16 console font + 2px leading
     int input_y = box_y + box_h - 24;
@@ -3235,13 +3303,13 @@ static void draw_diag_app(int tx, int ty, int win_w, int win_h, gui_state_t *st)
     int start_y = box_y + 12;
     for (uint32_t i = start_idx; i < st->console_line_count && start_y < input_y; i++) {
         const char *line = st->console_history[i];
-        uint32_t color = cyber_text(0);
+        uint32_t color = term_fg;
         if (strncmp(line, "hbos_gui_shell:", 15) == 0) {
-            color = rgb(39, 174, 96);
+            color = term_prompt;
         } else if (strncmp(line, "hbos_shell:", 11) == 0) {
-            color = rgb(218, 68, 83);
+            color = light ? rgb(176, 48, 58) : rgb(218, 68, 83);
         } else if (strncmp(line, "  ", 2) == 0) {
-            color = rgb(160, 167, 173);
+            color = term_dim;
         }
         text_mono(box_x + 12, start_y, max_x, line, color);
         start_y += row_h;
@@ -3249,30 +3317,30 @@ static void draw_diag_app(int tx, int ty, int win_w, int win_h, gui_state_t *st)
 
     // 绘制当前输入行（固定 8px 等宽 cell，光标按 cell 对齐）
     const char *prompt = "hbos_gui_shell:/# ";
-    int px = text_mono(box_x + 12, input_y, max_x, prompt, rgb(39, 174, 96));
-    text_mono(px, input_y, max_x, st->console_input, cyber_text(0));
+    int px = text_mono(box_x + 12, input_y, max_x, prompt, term_prompt);
+    text_mono(px, input_y, max_x, st->console_input, term_fg);
 
     // 闪烁光标（细竖线 caret）
     static uint32_t cursor_ticks = 0;
     cursor_ticks++;
     if ((cursor_ticks / 15) % 2) {
         int cursor_x = px + (int)st->console_cursor * MONO_GLYPH_W;
-        rect(cursor_x, input_y, 2, MONO_GLYPH_H - 2, rgb(39, 174, 96));
+        rect(cursor_x, input_y, 2, MONO_GLYPH_H - 2, term_prompt);
     }
 
     // 垂直滚动条
     int sb_x = box_x + box_w + 4;
     int sb_y = box_y;
     int sb_h = box_h;
-    rect(sb_x, sb_y, sb_w, sb_h, rgb(22, 26, 30));
-    border(sb_x, sb_y, sb_w, sb_h, rgb(50, 58, 65));
+    rect(sb_x, sb_y, sb_w, sb_h, light ? rgb(232, 236, 241) : rgb(22, 26, 30));
+    border(sb_x, sb_y, sb_w, sb_h, light ? rgb(196, 202, 210) : rgb(50, 58, 65));
     if (max_scroll > 0) {
         int thumb_h = sb_h * max_lines / (total > 0 ? total : 1);
         if (thumb_h < 16) thumb_h = 16;
         if (thumb_h > sb_h) thumb_h = sb_h;
         int thumb_range = sb_h - thumb_h;
         int thumb_y = sb_y + thumb_range - (thumb_range * st->console_scroll / max_scroll);
-        rect(sb_x + 2, thumb_y + 1, sb_w - 4, thumb_h - 2, rgb(61, 174, 233));
+        rect(sb_x + 2, thumb_y + 1, sb_w - 4, thumb_h - 2, light ? rgb(70, 150, 215) : rgb(61, 174, 233));
     }
 }
 
@@ -4093,6 +4161,22 @@ static int  g_br_og_has_image;        /* og:image 是否已登记进图片槽 */
  * 就是收益的大头。 */
 static void browser_fetch_stylesheet(gui_state_t *st, const char *href);
 static int g_br_css_fetches;
+static int g_br_script_fetches;   /* 外链 <script src> 抓取计数（每页上限 10） */
+static char g_br_current_url[BROWSER_URL_CAP];   /* 当前页 URL（传给 js -u） */
+
+/* 大小写不敏感子串查找：HTML 标签名/属性可能任意大小写（<SCRIPT>、
+ * <ScRiPt src=...>），解析器现有 tag_ci_eq 只比较已提取的标签名，这里
+ * 需要在整个 body 上直接找 "<script" / "</script>" / "src"。 */
+static const char *body_strcasestr(const char *haystack, const char *needle) {
+    if (!haystack || !needle || !*needle) return NULL;
+    size_t nl = strlen(needle);
+    for (const char *p = haystack; *p; p++) {
+        size_t i = 0;
+        while (i < nl && p[i] && (p[i] | 0x20) == (needle[i] | 0x20)) i++;
+        if (i == nl) return p;
+    }
+    return NULL;
+}
 
 static const char *browser_skipped_tag_close(const char *name, int len) {
     static const char *const tags[] = {
@@ -4187,6 +4271,9 @@ static void browser_render_from_html(gui_state_t *st, const char *html, char *ou
     st->browser_link_count = 0;
     g_br_img_count = 0;
     g_br_css_fetches = 0;
+    g_br_script_fetches = 0;
+    strncpy(g_br_current_url, st->browser_url, sizeof(g_br_current_url) - 1);
+    g_br_current_url[sizeof(g_br_current_url) - 1] = 0;
     g_br_dns_n = 0;
     g_br_sub_fails = 0;
     /* CSS/图片是可降级内容，整页最多给 15 秒。主体已经抓到后不能因为某个
@@ -4837,6 +4924,47 @@ static void browser_fetch_stylesheet(gui_state_t *st, const char *href) {
     css_parse_stylesheet(body, len - body_off);
 }
 
+/* 外链 <script src="..."> 抓取：走与 stylesheet 相同的网络路径（TLS
+ * 由内核处理），正文写入 ramfs 文件，供 jspage/浏览器管线按 HTML 顺序
+ * 执行。返回 0 成功；失败/超预算返回 -1（调用方继续处理剩余脚本）。 */
+static int browser_fetch_script_to_file(const char *href, const char *path) {
+    if (g_br_script_fetches >= 10 || g_br_sub_fails >= 4 ||
+        br_sub_budget_expired())
+        return -1;
+    static char jsbuf[256 * 1024];
+    char url[192];
+    if (browser_resolve_href(NULL, href, url, sizeof(url)) < 0) return -1;
+    int https = 0; char host[96]; const char *path_s = "/"; uint16_t port = 80;
+    if (gui_parse_url(url, &https, host, sizeof(host), &port, &path_s)) return -1;
+    uint32_t ip = 0; int cached = 0;
+    if (br_sub_resolve(host, &ip, &cached) < 0) { if (!cached) g_br_sub_fails++; return -1; }
+    uint32_t len = 0;
+    int ok = https ? tls_https_get_with_idle_limit(host, ip, port, path_s,
+                                                    jsbuf, sizeof(jsbuf), &len, 15)
+                   : net_http_request("GET", host, ip, port, path_s,
+                                      jsbuf, sizeof(jsbuf), &len);
+    if (ok < 0) { g_br_sub_fails++; return -1; }
+    if (br_sub_budget_expired()) return -1;
+    g_br_script_fetches++;
+    const char *body = http_body_ptr(jsbuf);
+    uint32_t body_off = (uint32_t)(body - jsbuf);
+    if (body_off >= len) return -1;
+    uint32_t blen = len - body_off;
+    /* ramfs 单文件上限 128KB。宁可跳过超大 bundle，也不能写入半截 JS：
+     * 半截源码只会产生 SyntaxError，并污染后续依赖判断。 */
+    if (blen > 120U * 1024U) return -1;
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return -1;
+    size_t off = 0;
+    while (off < blen) {
+        long w = write(fd, body + off, blen - off);
+        if (w <= 0) break;
+        off += (size_t)w;
+    }
+    close(fd);
+    return (off == blen) ? 0 : -1;
+}
+
 /* 图床变换后缀改写（B 站 hdslb 等）：
  * 1. 有 '@' 参数的 URL（如 xxx.jpg@672w_378h...webp）→ 把 '@' 后整段换成 "240w_180h"
  * 2. bilibili CDN 直链（i0/i1/i2.hdslb.com，无 '@'）→ 在 URL 末尾追加 "@240w_180h"
@@ -4873,6 +5001,181 @@ static void br_img_url_rewrite(char *url, uint32_t cap) {
 }
 
 /* 页面加载后统一抓取并解码所有已登记的内联图片。每张独立抓取一次
+ * 提取内联 <script> 交给 ring3 quickjs 运行时（js.hax）执行，把脚本的
+ * document.title 和 console/print/document.write 输出读回：title 更新窗口
+ * 标题栏，输出作为 BRK_CODE 块追加到渲染流末尾。v1 只执行无 src 的内联
+ * 脚本，忽略外链脚本和 DOM 操作（脚本内 document.write 文本原样展示）。
+ *
+ * browser_exec_scripts_core 是不依赖 GUI 的核心（jspage 命令与浏览器
+ * 共用）：返回 0 表示有脚本执行；title/out 由调用者提供缓冲。 */
+/* /system/js_pNN.js 路径构造（内联与外链脚本统一编号，供 js.hax
+ * 多文件逐个执行）。 */
+static void build_js_path(char *path, uint32_t cap, int index) {
+    static const char pfx[] = "/system/js_p";
+    static const char sfx[] = ".js";
+    uint32_t pi = 0;
+    for (const char *q = pfx; *q && pi < cap - 1; q++) path[pi++] = *q;
+    if (index >= 10) path[pi++] = (char)('0' + index / 10);
+    path[pi++] = (char)('0' + index % 10);
+    for (const char *q = sfx; *q && pi < cap - 1; q++) path[pi++] = *q;
+    path[pi] = 0;
+}
+
+int browser_exec_scripts_core(const char *body, char *title, uint32_t title_cap,
+                              char *out, uint32_t out_cap) {
+    const char *p = body;
+    int script_count = 0;
+    int ran = 0;
+
+    if (!body) return 0;
+    /* v1: each inline script is written to its own file and evaluated in
+     * its own unit — a SyntaxError in one (e.g. Vite import.meta chunks)
+     * must not block the remaining scripts.  External src= scripts are
+     * skipped. */
+    while (*p && script_count < 24) {
+        const char *s = body_strcasestr(p, "<script");
+        if (!s) break;
+        const char *gt = strchr(s, '>');
+        if (!gt) break;
+        /* 外链脚本（<script src=...>）：内核网络栈抓取（TLS），按 HTML
+         * 出现顺序与内联脚本统一编号，js.hax 逐个执行。 */
+        const char *src_attr = body_strcasestr(s, "src");
+        if (src_attr && src_attr < gt) {
+            char src_url[256];
+            uint32_t tag_len = (uint32_t)(gt - s);
+            if (br_attr_value(s, tag_len, "src", src_url, sizeof(src_url)) > 0) {
+                char path[32];
+                build_js_path(path, sizeof(path), script_count);
+                if (browser_fetch_script_to_file(src_url, path) == 0)
+                    script_count++;
+            }
+            p = gt + 1;
+            continue;
+        }
+        const char *end = body_strcasestr(gt + 1, "</script>");
+        if (!end) break;
+        size_t n = (size_t)(end - (gt + 1));
+        /* Bilibili 的 window.__INITIAL_STATE__ 约 87KB，必须完整执行；
+         * 截断 JS 比跳过更糟。ramfs 单文件上限 128KB，留 8KB 余量。 */
+        if (n > 120U * 1024U) { p = end + 9; continue; }
+        if (n > 0) {
+            char path[32];
+            build_js_path(path, sizeof(path), script_count);
+            int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd >= 0) {
+                size_t off = 0;
+                while (off < n) {
+                    long w = write(fd, gt + 1 + off, n - off);
+                    if (w <= 0) break;
+                    off += (size_t)w;
+                }
+                close(fd);
+                script_count++;
+            }
+        }
+        p = end + 9;
+    }
+    if (!script_count) return 0;
+
+    /* 页面原始 HTML 写给 js.hax 解析成 DOM（脚本执行前建树） */
+    int pfd = open("/system/page.html", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (pfd >= 0) {
+        size_t boff = 0;
+        size_t blen = strlen(body);
+        /* DOM 快照限制在 ramfs 128KB 单文件上限内；关键 INITIAL_STATE
+         * 脚本另外完整写入 js_pN.js，不依赖快照尾部。 */
+        if (blen > 120U * 1024U) blen = 120U * 1024U;
+        while (boff < blen) {
+            long w = write(pfd, body + boff, blen - boff);
+            if (w <= 0) break;
+            boff += (size_t)w;
+        }
+        close(pfd);
+    }
+
+    char *js_argv[16];
+    int a = 0;
+    js_argv[a++] = "js";
+    js_argv[a++] = "-w";
+    js_argv[a++] = "/system/js_out.txt";
+    js_argv[a++] = "-p";
+    js_argv[a++] = "/system/page.html";
+    js_argv[a++] = "-u";
+    js_argv[a++] = g_br_current_url[0] ? g_br_current_url : "about:blank";
+    /* 内置 Vue 运行时兜底：页面自己带 Vue（bilibili 的 vue.min.js 等）
+     * 会随后覆盖 window.Vue，预载只保证 window.Vue 一定存在。 */
+    if (access("/system/vue.global.prod.js", F_OK) == 0 && a < 14)
+        js_argv[a++] = "/system/vue.global.prod.js";
+    for (int i = 0; i < script_count && a < 15; i++) {
+        static char path[16][32];
+        build_js_path(path[i], sizeof(path[i]), i);
+        js_argv[a++] = path[i];
+    }
+    js_argv[a] = 0;
+    (void)hax_app_run("js", a, js_argv);
+    ran = 1;
+
+    /* 读回 title（第一行）+ 渲染出的迷你 HTML（其余行） */
+    char tmp[32768];
+    int ofd = open("/system/js_out.txt", O_RDONLY);
+    if (ofd < 0) return ran;
+    long olen = 0;
+    for (;;) {
+        long n = read(ofd, tmp + olen, (size_t)(sizeof(tmp) - 1 - olen));
+        if (n <= 0) break;
+        olen += n;
+        if (olen >= (long)sizeof(tmp) - 1) break;
+    }
+    close(ofd);
+    if (olen <= 0) return ran;
+    tmp[olen] = 0;
+
+    char *nl = strchr(tmp, '\n');
+    size_t title_len = nl ? (size_t)(nl - tmp) : (size_t)olen;
+    if (title && title_cap && title_len > 0 && title_len < title_cap) {
+        memcpy(title, tmp, title_len);
+        title[title_len] = 0;
+    }
+    if (out && out_cap) {
+        const char *js_out = nl ? nl + 1 : "";
+        size_t jlen = strlen(js_out);
+        if (jlen >= out_cap) jlen = out_cap - 1;
+        if (jlen > 0) {
+            memcpy(out, js_out, jlen);
+            out[jlen] = 0;
+        } else {
+            out[0] = 0;
+        }
+    }
+    return ran;
+}
+
+static void browser_exec_scripts(gui_state_t *st, const char *body) {
+    static char js_title[BROWSER_TITLE_CAP];
+    static char js_out[24 * 1024];
+
+    if (!browser_exec_scripts_core(body, js_title, sizeof(js_title),
+                                   js_out, sizeof(js_out)))
+        return;
+    if (js_title[0]) {
+        uint32_t tlen = (uint32_t)strlen(js_title);
+        if (tlen < BROWSER_TITLE_CAP) {
+            memcpy(g_browser_page_title, js_title, tlen);
+            g_browser_page_title[tlen] = 0;
+            g_browser_title_len = tlen;
+        }
+    }
+    size_t jlen = strlen(js_out);
+    if (jlen == 0) return;
+    /* js.hax 渲染的是脚本执行后的最终 DOM（Vue 等框架已挂载）：用它
+     * 替换内核静态解析结果，重新走一遍内核渲染器拿完整样式（BRK_H1/
+     * BRK_LINK/BRK_IMG…）。输入与输出必须是独立缓冲；解析器从左向右读
+     * mini HTML，同时向输出写 BRK 标记，就地解析会在读完前破坏源码。 */
+    browser_render_from_html(st, js_out, st->browser_render,
+                             BROWSER_PAGE_CAP, &st->browser_render_len);
+}
+
+/* browser_fetch_images：
  * （串行，复用同一个静态响应缓冲），解码进对应槽位；失败/超尺寸/JPEG
  * 等不支持的就把该槽宽高留 0，绘制端画占位。 */
 static void browser_fetch_images(gui_state_t *st) {
@@ -4927,6 +5230,26 @@ static void browser_load_internal(gui_state_t *st, int push_history) {
     }
     static char response[BROWSER_FETCH_CAP];
     uint32_t len = 0;
+    /* file:// 本地页面：直接读文件渲染，绕过网络与重定向循环。本地
+     * HTML 是路线图阶段 6 的回归载体，也用于内联 <script> 的 JS 测试。 */
+    if (strncmp(st->browser_url, "file://", 7) == 0) {
+        int lfd = open(st->browser_url + 7, O_RDONLY);
+        if (lfd < 0) {
+            browser_set_plain2(st, "无法读取本地文件: ", st->browser_url + 7);
+            br_status(st, "浏览器本地文件失败");
+            return;
+        }
+        long n = read(lfd, response, sizeof(response) - 1);
+        close(lfd);
+        if (n <= 0) {
+            browser_set_plain(st, "本地文件为空");
+            br_status(st, "浏览器本地文件失败");
+            return;
+        }
+        len = (uint32_t)n;
+        response[len] = 0;
+        goto render_page;
+    }
     /* 重定向循环：真实网站首页 301/302 到 www/https 非常普遍，之前浏览器
      * 不跟随（只有 shell 的 wget 会），用户看到的就是一页 301 Moved 文本。
      * 最多 4 跳防环；每跳把地址栏更新为当前 URL（既是 Chrome 行为，也让
@@ -4983,11 +5306,15 @@ static void browser_load_internal(gui_state_t *st, int push_history) {
         st->browser_url[BROWSER_URL_CAP - 1] = 0;
         st->browser_url_cursor = (uint32_t)strlen(st->browser_url);
     }
+render_page:
     const char *body = http_body_ptr(response);
     st->browser_required_caps =
         hive_browser_detect_requirements(body, strlen(body));
     browser_text_from_html(body, st->browser_page, BROWSER_PAGE_CAP, &st->browser_page_len);
     browser_render_from_html(st, body, st->browser_render, BROWSER_PAGE_CAP, &st->browser_render_len);
+    /* 执行内联 <script>（v1：无 src、quickjs ring3 运行时），输出追加到
+     * 渲染流末尾。放在 og 卡片/图片之前，JS 写的标题优先。 */
+    browser_exec_scripts(st, body);
     /* og 卡片：视频页（和其他 CSR 页面）body 几乎是空的，但 <head> 里有
      * og:title/og:description/og:image。若解析后正文很少，就把 og 信息作为
      * "视频卡片"插到渲染缓冲最前——用 memmove 挪出头部空间，写入一个
@@ -5049,12 +5376,12 @@ static void browser_load_internal(gui_state_t *st, int push_history) {
 }
 
 /* browser_load_internal 的后台任务包装。task_create 的入口必须是
- * void (*)(void*)，这里把 gui_state_t* 通过 arg 传入。加载完成后
- * 清 browser_loading 标志——协作式调度不存在写-写竞争。 */
+ * void (*)(void*)，这里把 gui_state_t* 通过 arg 传入。不要在此清
+ * browser_loading：GUI 主循环用该标志检测任务终止并触发最终重绘；这里
+ * 提前清零会让页面数据已经生成但屏幕永远停在加载前一帧。 */
 static void browser_fetch_bg(void *arg) {
     gui_state_t *st = (gui_state_t *)arg;
     browser_load_internal(st, st->browser_push_hist);
-    st->browser_loading = 0;
 }
 
 static void browser_load(gui_state_t *st) {
@@ -5740,7 +6067,7 @@ static void draw_browser_app(int tx, int ty, int win_w, int win_h, gui_state_t *
     /* 新建标签 +（纯装饰，和 Chrome 一样放在标签右侧） */
     rect(tab_x + tab_w + 12, ty + BR_TAB_H / 2, 11, 1, icon_dis);
     rect(tab_x + tab_w + 17, ty + BR_TAB_H / 2 - 5, 1, 11, icon_dis);
-    /* Keep the active engine visible: SSR text is not proof that Vue ran. */
+    /* 明示当前渲染后端，避免把静态 SSR 摘要误认为 JavaScript/Vue 已运行。 */
     text_clipped(wx + ww - 62, ty + 9, wx + ww - 26,
                  browser_backend->name, rgb(150, 156, 166), 1);
 
@@ -5922,6 +6249,7 @@ static void draw_panel_window(int tx, int ty, int win_w, int win_h, int w, int h
 }
 
 static void draw_app_window_body(int tx, int ty, int win_w, int win_h, gui_state_t *st, int mode) {
+    if (gui_app_draw(st, mode, tx, ty, win_w, win_h)) return;
     if (mode == GUI_APP_NOTES) draw_notes_app(tx, ty, win_w, win_h, st);
     else if (mode == GUI_APP_UWC) draw_uwc_app(tx, ty, st);
     else if (mode == GUI_APP_SNAKE) draw_snake_app(tx, ty, st);
@@ -6360,6 +6688,7 @@ static const desktop_icon_t g_desktop_icons[] = {
     {"文件管理器", WM_WIN_PANEL, PANEL_FILES},
     {"应用",       WM_WIN_PANEL, PANEL_APPS},
     {"控制台",     WM_WIN_APP,   GUI_APP_DIAG},
+    {"计算器",     WM_WIN_APP,   GUI_APP_CALC},
 };
 #define DESKTOP_ICON_COUNT ((int)(sizeof(g_desktop_icons) / sizeof(g_desktop_icons[0])))
 
@@ -6725,28 +7054,10 @@ static const gui_app_meta_t *selected_gui_app(gui_state_t *st) {
     }
     if (st->selected_app < 0) st->selected_app = 0;
     if ((uint32_t)st->selected_app >= count) st->selected_app = (int)count - 1;
-    if ((uint32_t)st->selected_app >= GUI_BUILTIN_APP_COUNT) return 0;
     return &gui_apps[(uint32_t)st->selected_app];
 }
 
 static void gui_open_selected_app(gui_state_t *st) {
-    uint32_t count = gui_app_count();
-    if (st->selected_app < 0) st->selected_app = 0;
-    if ((uint32_t)st->selected_app >= count)
-        st->selected_app = count ? (int)count - 1 : 0;
-    if ((uint32_t)st->selected_app >= GUI_BUILTIN_APP_COUNT) {
-        const hax_app_entry_t *entry = gui_hax_at(
-            st->selected_app - (int)GUI_BUILTIN_APP_COUNT);
-        if (!entry) {
-            st->status = "未选择应用";
-            return;
-        }
-        char *av[1] = { (char *)entry->name };
-        hax_app_spawn(entry->name, 1, av);
-        gui_toast(st, "已启动 ", entry->name);
-        st->status = "独立应用已启动";
-        return;
-    }
     const gui_app_meta_t *app = selected_gui_app(st);
     if (!app) {
         st->status = "未选择应用";
@@ -6784,17 +7095,15 @@ static void gui_open_selected_file(gui_state_t *st) {
     }
     if (gui_has_suffix(full, ".bmp") || gui_has_suffix(full, ".png") ||
         gui_has_suffix(full, ".jpg") || gui_has_suffix(full, ".jpeg")) {
-        char *av[2] = { "imgview", full };
-        if (hax_app_spawn("imgview", 2, av) >= 0)
-            st->status = "已用独立图片查看器打开";
-        else st->status = "图片查看器启动失败";
+        app_imgview_set_path(st, full);
+        if (gui_open_window(st, WM_WIN_APP, GUI_APP_IMGVIEW, 0) >= 0)
+            st->status = "已用图片查看器打开";
         return;
     }
     if (gui_looks_binary(node)) {
-        char *av[2] = { "hexview", full };
-        if (hax_app_spawn("hexview", 2, av) >= 0)
-            st->status = "已用独立十六进制查看器打开";
-        else st->status = "十六进制查看器启动失败";
+        app_hexview_set_path(st, full);
+        if (gui_open_window(st, WM_WIN_APP, GUI_APP_HEXVIEW, 0) >= 0)
+            st->status = "已用十六进制查看器打开";
         return;
     }
     gui_set_note_name(st, full);
@@ -7194,6 +7503,7 @@ static void handle_app_key(gui_state_t *st, int key) {
         return;
     }
     gui_sync_focus(st);
+    if (gui_app_handle_key(st, key)) return;
     if (st->app_mode == GUI_APP_NOTES) {
         note_load(st);
         if (key == 1) {  // Ctrl+A：全选
@@ -7588,7 +7898,7 @@ static void draw_window_switcher(int w, int h, gui_state_t *st) {
 }
 
 /* ── 启动器中的 .hax GUI 应用枚举 ──────────────────────────────
- * 桌面只读取应用元数据，不再链接独立应用的实现。 */
+ * 仅 GUI 类应用进入启动器；数量受 SM_HAX_MAX 限制以约束面板高度。 */
 static int gui_hax_count(void) {
     uint32_t n = hax_app_count();
     int c = 0;
@@ -7614,10 +7924,108 @@ static const hax_app_entry_t *gui_hax_at(int k) {
     return 0;
 }
 
-/* 启动器动态总高度：桌面面板 + 仍在迁移的旧应用 + 独立 .hax 行 */
-/* ── 开始菜单：统一应用条目（内置 + .hax）+ 搜索过滤 ──────────────
+/* ── 磁盘 .hax 应用（hpt 安装到 /bin，GUI 类）───────────────
+ * hpt install 的 HIVE 应用落在 /bin/<name>.hax，不在 hax 表里；
+ * 开始菜单打开时扫描 /bin，把带 .haxmeta 且声明 GUI 类的应用列出来，
+ * 启动时用 elf64_load_and_spawn 直接加载（应用自身 hax_win_open
+ * 连接合成器）。 */
+#define GUI_DISK_APP_MAX 16
+static char disk_apps[GUI_DISK_APP_MAX][32];
+static int disk_app_count;
+static uint8_t disk_hax_buf[65536];
+
+static int disk_hax_kind(const uint8_t *data, size_t len,
+                         char *name_out, size_t name_cap) {
+    if (!data || len < 64 || memcmp(data, "\x7f" "ELF\x02\x01", 6) != 0)
+        return 0;
+    uint64_t shoff;
+    uint16_t shentsize, shentnum, shstrndx;
+    __builtin_memcpy(&shoff, data + 0x28, 8);
+    __builtin_memcpy(&shentsize, data + 0x3A, 2);
+    __builtin_memcpy(&shentnum, data + 0x3C, 2);
+    __builtin_memcpy(&shstrndx, data + 0x3E, 2);
+    if (shentsize < 64 || shstrndx >= shentnum ||
+        shoff + (uint64_t)shentsize * shentnum > len)
+        return 0;
+    const uint8_t *sh0 = data + shoff;
+    uint64_t shstr_off, shstr_size;
+    __builtin_memcpy(&shstr_off,
+                     sh0 + (uint64_t)shstrndx * shentsize + 0x18, 8);
+    __builtin_memcpy(&shstr_size,
+                     sh0 + (uint64_t)shstrndx * shentsize + 0x20, 8);
+    if (shstr_off + shstr_size > len) return 0;
+    for (uint16_t i = 0; i < shentnum; i++) {
+        const uint8_t *sh = sh0 + (uint64_t)i * shentsize;
+        uint32_t name_off;
+        __builtin_memcpy(&name_off, sh, 4);
+        if (name_off >= shstr_size) continue;
+        const char *secname = (const char *)(data + shstr_off + name_off);
+        if (strcmp(secname, ".haxmeta") != 0) continue;
+        uint64_t sec_off, sec_size;
+        __builtin_memcpy(&sec_off, sh + 0x18, 8);
+        __builtin_memcpy(&sec_size, sh + 0x20, 8);
+        if (sec_size < 104 || sec_off + sec_size > len) return 0;
+        const uint8_t *meta = data + sec_off;
+        uint32_t magic, kind;
+        __builtin_memcpy(&magic, meta, 4);
+        __builtin_memcpy(&kind, meta + 4, 4);
+        if (magic != 0x4D584148u || kind == 0) return 0;
+        if (name_out && name_cap) {
+            const char *nm = (const char *)(meta + 8);
+            size_t n = 0;
+            while (n + 1 < name_cap && nm[n] && n < 32) { name_out[n] = nm[n]; n++; }
+            name_out[n] = 0;
+        }
+        return (int)kind;
+    }
+    return 0;
+}
+
+static void gui_scan_disk_apps(void) {
+    disk_app_count = 0;
+    char full[256];
+    if (vfs_resolve_path("/", "/bin", full, sizeof(full)) < 0) return;
+    for (uint32_t i = 0; disk_app_count < GUI_DISK_APP_MAX; i++) {
+        char name[VFS_MAX_NAME];
+        uint32_t type;
+        if (vfs_readdir_at(full, i, name, &type) != 0) break;
+        if (type != VFS_NODE_FILE) continue;
+        size_t nl = strlen(name);
+        if (nl < 5 || name[nl - 4] != '.' || name[nl - 3] != 'h' ||
+            name[nl - 2] != 'a' || name[nl - 1] != 'x')
+            continue;
+        char path[96];
+        size_t pn = nl < 90 ? nl : 90;
+        memcpy(path, "/bin/", 5);
+        memcpy(path + 5, name, pn);
+        path[5 + pn] = 0;
+        int fd = open(path, O_RDONLY);
+        if (fd < 0) continue;
+        size_t total = 0;
+        long rn;
+        while (total < sizeof(disk_hax_buf) &&
+               (rn = read(fd, disk_hax_buf + total,
+                          sizeof(disk_hax_buf) - total)) > 0)
+            total += (size_t)rn;
+        close(fd);
+        if (total == 0) continue;
+        char app_name[32] = {0};
+        int kind = disk_hax_kind(disk_hax_buf, total, app_name,
+                                 sizeof(app_name));
+        if (!(kind & HAX_KIND_GUI)) continue;
+        const char *use = app_name[0] ? app_name : name;
+        size_t un = strlen(use);
+        if (un >= 32) un = 31;
+        memcpy(disk_apps[disk_app_count], use, un);
+        disk_apps[disk_app_count][un] = 0;
+        disk_app_count++;
+    }
+}
+
+/* 启动器动态总高度：内置 13 项 + 追加的 .hax 行 */
+/* ── 开始菜单：统一应用条目（内置 + .hax + 磁盘 hpt 应用）+ 搜索过滤 ─
  * 键盘是 ASCII，应用名是中文，故每个内置应用附带 ASCII/拼音关键词供搜索。 */
-enum { SM_K_PANEL = 0, SM_K_APP = 1, SM_K_HAX = 2 };
+enum { SM_K_PANEL = 0, SM_K_APP = 1, SM_K_HAX = 2, SM_K_DISK = 3 };
 typedef struct {
     const char *name; const char *kw; int kind; int mode; int icon;
 } sm_entry_t;
@@ -7628,23 +8036,39 @@ static const sm_entry_t sm_builtin[] = {
     {"资源",       "resource sys ziyuan",      SM_K_PANEL, PANEL_SYS,       ICON_SYS},
     {"应用",       "app apps yingyong",        SM_K_PANEL, PANEL_APPS,      ICON_APPS},
     {"记事本",     "note notes jishi",         SM_K_APP,   GUI_APP_NOTES,   ICON_NOTES},
+    {"计算器",     "calc calculator jisuan",   SM_K_APP,   GUI_APP_CALC,    ICON_CALC},
     {"贪吃蛇",     "snake game tanchishe",     SM_K_APP,   GUI_APP_SNAKE,   ICON_SNAKE},
     {"浏览器",     "web browser liulan",       SM_K_APP,   GUI_APP_BROWSER, ICON_BROWSER},
     {"代码",       "code daima",               SM_K_APP,   GUI_APP_CODE,    ICON_CODE},
     {"终端",       "term terminal shell",      SM_K_APP,   GUI_APP_DIAG,    ICON_TERM},
+    {"时钟",       "clock time shizhong",      SM_K_APP,   GUI_APP_CLOCK,   ICON_CLOCK},
+    {"设置",       "settings config shezhi",   SM_K_APP,   GUI_APP_SETTINGS,ICON_SYS},
+    {"任务管理器", "task taskmgr process renwu guanli", SM_K_APP, GUI_APP_TASKMGR, ICON_SYS},
+    {"快捷键",     "shortcuts keys kuaijiejian",        SM_K_APP, GUI_APP_SHORTCUTS, ICON_SHORTCUTS},
 };
 #define SM_BUILTIN_N ((int)(sizeof(sm_builtin) / sizeof(sm_builtin[0])))
 
-static int sm_total_entries(void) { return SM_BUILTIN_N + gui_hax_count(); }
+static int sm_total_entries(void) {
+    return SM_BUILTIN_N + gui_hax_count() + disk_app_count;
+}
 
 static int sm_entry_at(int idx, sm_entry_t *out) {
     if (idx < 0) return 0;
     if (idx < SM_BUILTIN_N) { *out = sm_builtin[idx]; return 1; }
-    const hax_app_entry_t *e = gui_hax_at(idx - SM_BUILTIN_N);
-    if (!e) return 0;
-    out->name = e->name; out->kw = e->name;
-    out->kind = SM_K_HAX; out->mode = idx - SM_BUILTIN_N; out->icon = ICON_APPS;
-    return 1;
+    int k = idx - SM_BUILTIN_N;
+    const hax_app_entry_t *e = gui_hax_at(k);
+    if (e) {
+        out->name = e->name; out->kw = e->name;
+        out->kind = SM_K_HAX; out->mode = k; out->icon = ICON_APPS;
+        return 1;
+    }
+    int d = k - gui_hax_count();
+    if (d >= 0 && d < disk_app_count) {
+        out->name = disk_apps[d]; out->kw = disk_apps[d];
+        out->kind = SM_K_DISK; out->mode = d; out->icon = ICON_APPS;
+        return 1;
+    }
+    return 0;
 }
 
 static char sm_lc(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
@@ -7697,7 +8121,31 @@ static int sm_visible_count(const gui_state_t *st) {
 static void sm_launch(gui_state_t *st, const sm_entry_t *e) {
     if (e->kind == SM_K_PANEL) gui_open_panel_window(st, e->mode);
     else if (e->kind == SM_K_APP) gui_open_window(st, WM_WIN_APP, e->mode, 0);
-    else {
+    else if (e->kind == SM_K_DISK) {
+        /* hpt 安装到 /bin 的 GUI 应用：从磁盘加载并异步启动（非阻塞，
+         * 应用自身 hax_win_open 连接合成器，与 SM_K_HAX 的并发窗口应用
+         * 同一套非阻塞语义）。 */
+        char path[96];
+        size_t dn = strlen(disk_apps[e->mode]);
+        if (dn > 90) dn = 90;
+        memcpy(path, "/bin/", 5);
+        memcpy(path + 5, disk_apps[e->mode], dn);
+        path[5 + dn] = 0;
+        int fd = open(path, O_RDONLY);
+        if (fd < 0) return;
+        size_t total = 0;
+        long rn;
+        while (total < sizeof(disk_hax_buf) &&
+               (rn = read(fd, disk_hax_buf + total,
+                          sizeof(disk_hax_buf) - total)) > 0)
+            total += (size_t)rn;
+        close(fd);
+        if (total == 0) return;
+        char *av[1]; av[0] = disk_apps[e->mode];
+        if (elf64_load_and_spawn(disk_hax_buf, total, av, 0, av[0]) >= 0)
+            gui_toast(st, "已启动 ", av[0]);
+        return;
+    } else {
         const hax_app_entry_t *he = gui_hax_at(e->mode);
         if (he) {
             char *av[1]; av[0] = (char *)he->name;
@@ -8256,11 +8704,19 @@ static void cmd_gui(int argc, char **argv) {
     wm_set_panel_title(PANEL_SYS, "资源管理器");
     wm_set_panel_title(PANEL_APPS, "应用程序");
     wm_set_app_title(GUI_APP_NOTES, "记事本");
+    wm_set_app_title(GUI_APP_CALC, "计算器");
     wm_set_app_title(GUI_APP_UWC, "文件统计");
     wm_set_app_title(GUI_APP_SNAKE, "贪吃蛇");
     wm_set_app_title(GUI_APP_BROWSER, "浏览器");
     wm_set_app_title(GUI_APP_CODE, "代码工作台");
     wm_set_app_title(GUI_APP_DIAG, "控制台终端");
+    wm_set_app_title(GUI_APP_CLOCK, "时钟");
+    wm_set_app_title(GUI_APP_SETTINGS, "设置");
+    wm_set_app_title(GUI_APP_FILES, "文件管理器");
+    wm_set_app_title(GUI_APP_TASKMGR, "任务管理器");
+    wm_set_app_title(GUI_APP_SHORTCUTS, "快捷键");
+    wm_set_app_title(GUI_APP_IMGVIEW, "图片查看器");
+    wm_set_app_title(GUI_APP_HEXVIEW, "十六进制查看器");
 
     (void)block_init();
     if (mouse_init() < 0) st.status = "未检测到鼠标";
@@ -8317,6 +8773,7 @@ static void cmd_gui(int argc, char **argv) {
         if (key == KB_KEY_F1) {
             wm_toggle_start_menu(&st.wm);
             if (st.wm.start_menu_open) {
+                gui_scan_disk_apps();
                 st.wm.menu_h = gui_start_menu_h();
                 st.sm_search[0] = 0; st.sm_search_len = 0;
                 st.status = "开始菜单";
@@ -9008,10 +9465,12 @@ static void cmd_gui(int argc, char **argv) {
                                     st.status = "拖动窗口";
                                 }
                             } else {
-                                /* Client-area clicks activate the topmost window
-                                 * under the pointer.  Routing only from app_mode
-                                 * left background windows inert until their
-                                 * titlebar was clicked. */
+                                /* Client-area clicks participate in normal window
+                                 * activation too.  The old dispatch keyed only on
+                                 * st.app_mode, so it kept sending a click to the
+                                 * previously active app unless the user clicked a
+                                 * titlebar first.  Resolve the topmost window under
+                                 * the pointer before interpreting any client widget. */
                                 int content_idx = gui_window_at(&st, w, h, mx, my);
                                 if (content_idx >= 0 && content_idx != st.wm.active_window)
                                     gui_focus_window(&st, content_idx);
@@ -9069,7 +9528,12 @@ static void cmd_gui(int argc, char **argv) {
                                                 note_text_dragging = 1;
                                                 st.status = "已移动笔记光标";
                                             } else {
-                                                st.status = "应用已聚焦";
+                                                int aw_x, aw_y, aw_w, aw_h;
+                                                int aw = st.wm.active_window;
+                                                gui_window_metrics(&st, w, h, NULL, aw, &aw_x, &aw_y, &aw_w, &aw_h);
+                                                int atx = aw_x + 30, aty = aw_y + 42;
+                                                if (!gui_app_on_click(&st, mx, my, atx, aty, aw_w, aw_h))
+                                                    st.status = "应用已聚焦";
                                             }
                                         }
                                     }
@@ -9095,9 +9559,11 @@ static void cmd_gui(int argc, char **argv) {
                                         handle_action(&st, action);
                                     }
                                 } else {
-                                    /* Exposed desktop shortcuts remain clickable
-                                     * while windows exist, but never click through
-                                     * a window covering the same point. */
+                                    /* No visible window owns this point: it is a
+                                     * desktop click even while another window is
+                                     * active.  This keeps exposed shortcuts usable
+                                     * and prevents clicks through an overlapping
+                                     * window. */
                                     int dico = hit_desktop_icon(mx, my);
                                     if (dico >= 0) {
                                         const desktop_icon_t *d = &g_desktop_icons[dico];
@@ -9155,6 +9621,10 @@ static void cmd_gui(int argc, char **argv) {
             }
         }
         if (snake_auto_tick(&st)) {
+            gui_dirty_mark_full();
+            draw_gui_frame(&fb, w, h, &st, mx, my, cursor_edge);
+        }
+        if (gui_app_tick(&st)) {
             gui_dirty_mark_full();
             draw_gui_frame(&fb, w, h, &st, mx, my, cursor_edge);
         }
@@ -9311,6 +9781,10 @@ void gui_append_char(char *buf, uint32_t cap, uint32_t *pos, char c) { append_ch
 void gui_append_str(char *buf, uint32_t cap, uint32_t *pos, const char *s) { append_str(buf, cap, pos, s); }
 void gui_append_int(char *buf, uint32_t cap, uint32_t *pos, int v) { append_int(buf, cap, pos, v); }
 void gui_append_uint(char *buf, uint32_t cap, uint32_t *pos, uint32_t v) { append_uint(buf, cap, pos, v); }
+void gui_append_ll(char *buf, uint32_t cap, uint32_t *pos, long long v) { append_ll(buf, cap, pos, v); }
+void gui_append_sci(char *buf, uint32_t cap, uint32_t *pos, long long mant, int exp) {
+    append_sci(buf, cap, pos, mant, exp);
+}
 
 void gui_draw_line(int x0, int y0, int x1, int y1, uint32_t color) {
     int dx = x1 - x0, dy = y1 - y0;
