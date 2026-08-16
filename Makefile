@@ -2,11 +2,11 @@ CC ?= cc
 BUILD_DIR ?= build
 CFLAGS ?= -O2 -Wall -Wextra
 PDF_PYTHON ?= python3
-HBOS_DIR ?= $(if $(wildcard ../HBOS/Makefile),../HBOS,$(if $(wildcard ../hbosv2/Makefile),../hbosv2,../HBOS))
+HBOS_DIR ?= $(if $(wildcard ../Makefile),..,$(if $(wildcard ../HBOS/Makefile),../HBOS,$(if $(wildcard ../hbosv2/Makefile),../hbosv2,../HBOS)))
 HBOS_BUILD_DIR ?= $(CURDIR)/$(BUILD_DIR)/hbos
 HBOS_RUN_TARGET ?= run
 PKG_REPO_DIR ?= $(CURDIR)/$(BUILD_DIR)/repo
-HPT_DIR ?= $(CURDIR)/HPT
+HPT_DIR ?= $(HBOS_DIR)/HPT
 APP_STAGE_DIR ?= $(CURDIR)/$(BUILD_DIR)/app-src
 
 .PHONY: all help check-hpt test browser-test modern-web-test bilibili-home-smoke bilibili-video-smoke test-app-boundaries integration-test stage-apps apps repo image run start run-uefi sync pdf clean

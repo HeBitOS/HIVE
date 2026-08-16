@@ -3,8 +3,10 @@
 HIVE (HBOS Interface & Visual Environment) is a lightweight, modular desktop
 environment for HBOS. It provides the window manager, compositor, desktop
 shell, user-space GUI toolkit, and SDK for building independent graphical
-applications. The [HPT package manager](https://github.com/HeBitOS/HPT) is a
-required Git submodule and ships in every regular HIVE build.
+applications. Package management is provided by
+[HPT](https://github.com/HeBitOS/HPT), which lives in the HBOS repository
+as a Git submodule; HIVE builds against the surrounding HBOS checkout's
+`HPT/` directory instead of shipping its own copy.
 
 ## Clone
 
@@ -13,8 +15,14 @@ git clone --recurse-submodules https://github.com/HeBitOS/HIVE.git
 cd HIVE
 ```
 
-For an existing checkout, initialize dependencies with
-`git submodule update --init --recursive`.
+HIVE has no submodules of its own. Build it inside an HBOS checkout whose
+`HPT/` submodule is initialized:
+
+```sh
+git clone --recurse-submodules https://github.com/HeBitOS/HBOS.git
+git -C HBOS/HIVE checkout <revision>
+cd HBOS/HIVE
+```
 
 ## Repository layout
 
@@ -41,8 +49,9 @@ src/
 tests/              Host-side SDK and interaction tests
 tools/              Resource generation utilities
 docs/               API reference and repository-boundary documentation
-HPT/                Required package manager Git submodule
 ```
+
+(HPT is a sibling submodule of the HBOS repository, not part of HIVE.)
 
 Applications under `app/` only include the public SDK and keep their UI state
 inside `hive_ui_t`. They must not include desktop-private headers such as
@@ -63,14 +72,13 @@ pure user-space (no new syscalls), UTF-8-aware (CJK counted as two display
 cells, truncation never splits codepoints), and EOF-safe: every interactive
 control returns -1 instead of looping forever when stdin is exhausted.
 
-HIVE includes HPT, its apt-style package manager for disk-installed HAX
-applications, as a pinned Git submodule. HPT supports local and IPv4 HTTP
-repositories plus CA-verified DNS/IPv4/IPv6 HTTPS repositories with
-AAAA-first/A-record fallback, cached metadata, search, dependencies, SHA-256
-verification, install/remove/upgrade, and execution through `execve`. HIVE
-deliberately has
-no supported package-manager-free variant. Only a future fully kernel-only
-HBOS profile may omit the entire HIVE/HPT user-space stack. See the
+HIVE uses HPT, its apt-style package manager for disk-installed HAX
+applications, which ships as a submodule of the HBOS repository. HPT supports
+local and IPv4 HTTP repositories plus CA-verified DNS/IPv4/IPv6 HTTPS
+repositories with AAAA-first/A-record fallback, cached metadata, search,
+dependencies, SHA-256 verification, install/remove/upgrade, and execution
+through `execve`. A text-only (no-GUI) HBOS can still run `hpt` to manually
+install HIVE applications. See the
 [HPT documentation](https://github.com/HeBitOS/HPT/blob/main/docs/HPT.md).
 
 The registration-based desktop applications are now independent HAX
@@ -172,7 +180,7 @@ tests, resources, or documentation.
 
 For a complete HBOS image, use the [HBOS repository](https://github.com/HeBitOS/HBOS).
 HIVE's `apps`, `image`, `run`, and `run-uefi` targets stage HPT automatically
-and refuse to continue when the submodule is missing.
+from the surrounding HBOS checkout and refuse to continue when it is missing.
 
 ## License
 
