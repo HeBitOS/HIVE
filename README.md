@@ -57,6 +57,28 @@ Applications under `app/` only include the public SDK and keep their UI state
 inside `hive_ui_t`. They must not include desktop-private headers such as
 `gui_state.h`, `wm.h`, or `winsrv.h`.
 
+### Multi-structure HAX applications
+
+HAX applications are not limited to a single `.c` file. The HBOS multi-structure
+build rules accept three layouts under `app/`:
+
+```text
+app/<name>.c        Single-file application (original style)
+app/<name>/         Multi-file application: every *.c in the directory is
+                    compiled and linked into one <name>.hax
+app/lib/<lib>/      Standalone library: compiled once into
+                    build/app/lib/<lib>.o and shared by any number of apps
+```
+
+An application declares which standalone libraries it links by listing one
+library name per line in a deps file — `app/<name>/deps` for a directory app,
+`app/<name>.deps` for a single-file app (`#` starts a comment). Library headers
+are included as `<lib/xxx.h>` (the build adds `-I app/lib` automatically), and
+libraries may depend on other libraries through `app/lib/<lib>/deps`.
+`HAX_APP(...)` metadata must appear exactly once per application (conventionally
+in `main.c`). The staging target copies `app/` recursively so every layout
+survives into the HBOS build unchanged.
+
 ## Current status
 
 HIVE `0.1-beta5-gui.4` provides Toolkit API 1.4: Label, Button, Textbox,

@@ -81,9 +81,11 @@ integration-test: test
 
 stage-apps: check-hpt | $(BUILD_DIR)
 	rm -rf "$(APP_STAGE_DIR)"
-	mkdir -p "$(APP_STAGE_DIR)/include"
-	cp app/*.c "$(APP_STAGE_DIR)/"
-	cp app/include/*.h "$(APP_STAGE_DIR)/include/"
+	mkdir -p "$(APP_STAGE_DIR)"
+	# 递归拷贝以保留多结构布局：单文件 app/*.c、多文件 app/<name>/、
+	# 独立库 app/lib/<lib>/、以及 include/ SDK 头，全部原样进入暂存目录，
+	# 由 HBOS 的多结构 HAX 构建规则（见 HBOS Makefile）统一处理。
+	cp -r app/. "$(APP_STAGE_DIR)/"
 	cp "$(HPT_DIR)/app/hpt.c" "$(APP_STAGE_DIR)/hpt.c"
 	cp "$(HPT_DIR)/app/include/hpt.h" "$(APP_STAGE_DIR)/include/hpt.h"
 
