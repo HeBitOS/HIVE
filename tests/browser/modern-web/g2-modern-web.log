@@ -1,0 +1,27 @@
+# G2 modern-web acceptance 2026-08-25T14:48:57+08:00
+# content_shell: /run/media/linpinf/D8663B3A663B18A8/hbos-browser-work/chromium/src/out/hbos-host/content_shell
+# chromium revision: ef35003457e93c278f911a334b06e4a5f8967e06
+
+tests/browser/modern-web/run_content_shell.sh
+
+DevTools listening on ws://127.0.0.1:39781/devtools/browser/0b47201b-0a06-4f23-8477-942174c1f85c
+WARN: SystemInfo_vulkan.cpp:198 (HasKhronosValidationLayer): Vulkan validation layers are missing
+[10552:10552:0825/144858.742584:WARNING:sandbox/policy/linux/sandbox_linux.cc:405] InitializeSandbox() called with multiple threads in process gpu-process.
+#READY
+CONSOLE ERROR: Hydration completed but contains mismatches.
+[10530:10530:0825/144858.972301:ERROR:base/process/kill_posix.cc:33] waitpid(10555): 没有子进程 (10)
+[10530:10540:0825/144858.972936:WARNING:components/discardable_memory/service/discardable_shared_memory_manager.cc:458] Some MojoDiscardableSharedMemoryManagerImpls are still alive. They will be leaked.
+CONSOLE ERROR: Hydration completed but contains mismatches.
+HIVE Blink/V8/Vue acceptance
+HTML
+CSS Grid
+120
+PASS html-dom
+PASS css-grid-custom-properties
+PASS vue3-hydration-reactivity
+PASS fetch-promise-json
+PASS webassembly
+PASS media-source-api
+PASS worker-api
+HIVE_MODERN_WEB: PASS
+make rc=0

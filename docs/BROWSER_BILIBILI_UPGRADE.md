@@ -210,5 +210,37 @@ HIVE 浏览器外壳
 - Chromium Linux Stable 151.0.7922.71 已按精确 revision 外置同步；116 项
   hooks 全部通过，Headless Linux 参考配置已由 GN 成功生成。离线 Vue 3.5.40
   验收页已加入 `tests/browser/modern-web/`，等待 `content_shell` 构建完成后执行。
-- G2 只有出现 `HIVE_MODERN_WEB: PASS` 才算通过；G3/G4 目前仍未通过，不能
-  对外声明“Vue 兼容”“Bilibili 首页兼容”或“Bilibili 视频兼容”。
+- G2 只有出现 `HIVE_MODERN_WEB: PASS` 才算通过；G4 目前仍未通过，不能
+  对外声明“Bilibili 视频兼容”。
+
+> 2026-08-25 进展：
+> - **G2 已通过**：`tests/browser/modern-web/run_content_shell.sh` 输出
+>   `HIVE_MODERN_WEB: PASS`（DOM/CSS Grid 与自定义属性/Vue3 hydration 响应式/
+>   fetch/WebAssembly/MediaSource/Worker 七项全过），日志：
+>   `tests/browser/modern-web/g2-modern-web.log`。
+> - **G3 引擎级首页验收已通过（host 参考 content_shell）**：
+>   `HIVE_BILIBILI_HOME_SMOKE: PASS`（真实 Bilibili 首页加载、SSR hydration
+>   `__pinia` 就绪、66 图、84 处 Flex/Grid、3 个 ES module），以及新增的
+>   `HIVE_BILIBILI_HOME_INTERACTION: PASS`（滚动 43fps、导航点击进直播页、
+>   搜索框真实输入+Enter、动态卡片点击新标签打开视频页、全程无崩溃），日志：
+>   `tests/browser/g3-home-interaction.log`。视频页播放器容器（bpx-player）
+>   已在导航落点确认存在。
+> - “媒体后端未启用”占位、完整交互与性能验收（FCP/峰值内存/滚动帧率门禁）
+>   仍需在 HBOS 平台端口（args.hbos.gn）内落地后复测；G3/G4 的对外声明
+>   以平台端口验收为准。
+> - **#1 平台端口推进（args.hbos.gn）**：已按“hbos 视作桌面 Linux 等价”的
+>   最小骨架在 pinned Chromium 上打通 `target_os="hbos"` 的 GN 生成
+>   （`gn gen out/hbos` 完成为 31212 targets / 4833 files），ffmpeg
+>   `os_config` 映射到 `linux`，V8 `V8_HAVE_TARGET_OS`/`V8_TARGET_OS_LINUX`
+>   映射到 `linux`（否则 `std-object-sizes.h` 的 `#if V8_TARGET_OS_LINUX`
+>   因空宏编译失败），并注册了占位 ozone 后端
+>   `ui/ozone/platform/hbos`（委托 headless，先保证能链接运行）。
+>   `out/hbos` 用树内 `third_party/ninja/ninja` 编译 `content_shell`。
+>
+> **⚠ 构建铁律（2026-08-25 OOM 事故）**：本机只有 15GiB 内存 + 16 核，
+> ninja **默认并行 = 全核 × clang 大 TU(2–4GB) = 必爆内存**。
+> 23:17 内核 OOM killer 杀掉了 msedge（pid 233436，还连带 dsh web 重启、
+> ninja 在 [1928/23975] 被 SIGKILL、移动硬盘掉盘）。
+> **此后 Chromium 构建必须 `ninja -j2 -C out/hbos <target>`**，
+> 想提速需先关掉 QQ/Steam 等大户再考虑 -j4。
+> 日志：`/tmp/ninjahbos9.log`。

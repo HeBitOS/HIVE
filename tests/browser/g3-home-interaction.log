@@ -1,0 +1,26 @@
+# G3 bilibili home interaction 2026-08-25T15:45:44+08:00
+node tests/browser/g3_home_interaction.mjs
+PASS home-host
+PASS vue-hydration-pinia
+PASS images-lazy
+PASS flex-grid-layout
+PASS observers-fetch
+PASS scroll-usable
+DATA scroll-fps=43
+PASS nav-interaction
+DATA search-typed={"value":"科技","tag":"INPUT","placeholder":"等等 什么叫谷歌允许小米在安卓里面塞一套 小型的自研操作系统 ?1"}
+PASS search-box-accepts-input
+PASS search-interaction
+DATA search-url=https://www.bilibili.com/?
+DATA card-candidates=["https://www.bilibili.com/video/BV13Ehg6fE9r?track_id=","https://www.bilibili.com/video/BV1qS876oE8o?track_id=","https://www.bilibili.com/video/BV1Vy8r6JE9z","https://www.bilibili.com/video/BV1Vy8r6JE9z","https://www.bilibili.com/video/BV1uvMk6ZEay"]
+DATA card-opened-by=js https://www.bilibili.com/video/BV1Vy8r6JE9z
+PASS feed-card-interactive
+DATA card-opened=https://www.bilibili.com/video/BV1Vy8r6JE9z/?spm_id_from=333.1007.tianma.1-1-1.click
+DATA player-area={"url":"https://www.bilibili.com/video/BV1Vy8r6JE9z/?spm_id_from=333.1007.tianma.1-1-1.click","video":false,"playerArea":true,"mediaSource":true}
+PASS crash-recovery
+DATA first-content-load-ms=2319
+DATA requests=864
+DATA js-heap-used-bytes=15182380
+DATA page-url=https://www.bilibili.com/
+HIVE_BILIBILI_HOME_INTERACTION: PASS
+make rc=0

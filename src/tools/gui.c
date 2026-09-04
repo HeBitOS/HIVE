@@ -778,13 +778,12 @@ static void blit_mono_glyph(int x, int y, const uint8_t *glyph, uint32_t color, 
     }
 }
 
-// Blit a flat icon tile (RGBA, from the atlas), bilinearly scaled to sz×sz and
-// alpha-blended onto the surface. Premultiplied-alpha bilinear keeps the edges
-// smooth when downscaling the 64px master to taskbar/launcher sizes. Replaces
+// Blit a flat icon tile (RGBA), bilinearly scaled to sz×sz and alpha-blended
+// onto the surface. Premultiplied-alpha bilinear keeps the edges smooth when
+// downscaling the 64px master to taskbar/launcher sizes. Works for both atlas
+// tiles and per-app embedded HAX icon tiles (any square source size). Replaces
 // the old hand-drawn rect motifs + their colored backing square.
-static void blit_icon(int x, int y, int sz, int id) {
-    int tile = 0;
-    const uint32_t *src = gui_icon_tile(id, &tile);
+static void blit_icon_rgba(int x, int y, int sz, const uint32_t *src, int tile) {
     if (!src || tile <= 0 || sz <= 0 || !g_gui_surface) return;
     int cx = x, cy = y, cw = sz, ch = sz;
     if (!gui_clip_intersect(&cx, &cy, &cw, &ch)) return;
@@ -852,6 +851,13 @@ static void blit_icon(int x, int y, int sz, int id) {
             drow[xx] = 0xFF000000 | (orr << 16) | (og << 8) | ob;
         }
     }
+}
+
+// Blit an atlas icon tile by id (see blit_icon_rgba for the shared renderer).
+static void blit_icon(int x, int y, int sz, int id) {
+    int tile = 0;
+    const uint32_t *src = gui_icon_tile(id, &tile);
+    blit_icon_rgba(x, y, sz, src, tile);
 }
 
 // Map an app mode / panel id to its atlas icon id.
@@ -8450,7 +8456,22 @@ static void draw_start_menu(gui_state_t *st) {
         int isz = ui_s(36);
         int ix = cx - isz / 2;
         int iy = cy + ui_s(4);
-        blit_icon(ix, iy, isz, e.icon);
+        if (e.kind == SM_K_HAX) {
+            /* 自做的 .hax 可内嵌图标（.haxicon 段，构建期由 genhax.py
+             * 解码成 64x64 RGBA 瓦片）；有则优先显示，否则回退默认图集图标。 */
+            const hax_app_entry_t *he = gui_hax_at(e.mode);
+            if (he) {
+                int tsz = 0;
+                const uint32_t *tic = hax_app_icon_at(
+                    (uint32_t)(he - hax_app_table), &tsz);
+                if (tic) blit_icon_rgba(ix, iy, isz, tic, tsz);
+                else blit_icon(ix, iy, isz, e.icon);
+            } else {
+                blit_icon(ix, iy, isz, e.icon);
+            }
+        } else {
+            blit_icon(ix, iy, isz, e.icon);
+        }
         int tw = text_width(e.name, 1);
         int lx = cx - tw / 2;
         if (lx < ox + SM_PAD) lx = ox + SM_PAD;

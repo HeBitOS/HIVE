@@ -90,6 +90,20 @@ typedef struct {
     __attribute__((section(".haxmeta"), used))                           \
     const hax_meta_t __hax_app_meta = { HAX_META_MAGIC, (knd), (nm), (ds) }
 
+/*
+ * ── 应用图标（可选） ────────────────────────────────────────────────
+ * GUI 类应用（HAX_KIND_GUI / HAX_KIND_BOTH）可在构建时内嵌一个图标，
+ * HIVE 桌面启动器会显示它而不是默认的占位图标：
+ *
+ *   app/<name>.png          单文件应用：与 app/<name>.c 同目录、同名 PNG
+ *   app/<name>/icon.png     多文件应用：放在应用目录里
+ *
+ * 构建系统（Makefile）会用 objcopy 把 PNG 以 .haxicon 段内嵌进 .hax
+ * （图标随应用走，自包含）；tools/genhax.py 在打包时把 PNG 解码缩放到
+ * 64x64 RGBA 瓦片存入内核 blob，运行期 HIVE 通过 hax_app_icon_at() 读取。
+ * 支持任意尺寸 PNG（推荐 64x64 或更大，带透明背景），无图标时行为不变。
+ */
+
 /* ── 文本输入输出 ─────────────────────────────────────────────────── */
 
 /** 输出字符串（不换行） */

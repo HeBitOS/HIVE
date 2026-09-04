@@ -54,6 +54,9 @@ bilibili-home-smoke:
 bilibili-video-smoke:
 	node tests/browser/bilibili_probe.mjs --video "$(HIVE_BILIBILI_VIDEO_URL)"
 
+g3-home-interaction:
+	node tests/browser/g3_home_interaction.mjs
+
 test-app-boundaries:
 	bash tests/test_app_boundaries.sh
 
