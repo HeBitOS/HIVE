@@ -88,17 +88,17 @@ static uint32_t rgb(uint8_t r, uint8_t g, uint8_t b);
 // Palette — dark branch follows KDE Breeze Dark (cool grays, single blue accent
 // #3daee9). The historical cyber_* names are kept so call sites need no churn;
 // only the values changed. Light branch retuned toward Breeze Light.
-static inline uint32_t cyber_bg_top(int light) { return light ? rgb(239, 240, 241) : rgb(35, 38, 41); }
-static inline uint32_t cyber_bg_bot(int light) { return light ? rgb(226, 228, 231) : rgb(27, 30, 33); }
-static inline uint32_t cyber_neon_pink(int light) { return light ? rgb(41, 128, 185) : rgb(41, 128, 185); }   // secondary blue
-static inline uint32_t cyber_neon_cyan(int light) { return light ? rgb(41, 174, 233) : rgb(61, 174, 233); }   // accent #3daee9
-static inline uint32_t cyber_neon_yellow(int light) { return light ? rgb(230, 110, 0) : rgb(246, 116, 0); }   // highlight #f67400
-static inline uint32_t cyber_neon_purple(int light) { return light ? rgb(39, 160, 90) : rgb(39, 174, 96); }   // positive green
-static inline uint32_t cyber_text(int light) { return light ? rgb(35, 38, 41) : rgb(239, 240, 241); }
-static inline uint32_t cyber_text_muted(int light) { return light ? rgb(110, 116, 122) : rgb(160, 167, 173); }
-static inline uint32_t cyber_border(int light) { return light ? rgb(188, 192, 196) : rgb(60, 64, 69); }
-static inline uint32_t cyber_card_bg_top(int light) { return light ? rgb(252, 252, 252) : rgb(49, 54, 59); }
-static inline uint32_t cyber_card_bg_bot(int light) { return light ? rgb(239, 240, 241) : rgb(42, 46, 50); }
+static inline uint32_t cyber_bg_top(int light) { return light ? rgb(245, 247, 248) : rgb(27, 34, 39); }
+static inline uint32_t cyber_bg_bot(int light) { return light ? rgb(229, 235, 237) : rgb(20, 27, 32); }
+static inline uint32_t cyber_neon_pink(int light) { return light ? rgb(24, 126, 151) : rgb(74, 191, 190); }   // secondary teal
+static inline uint32_t cyber_neon_cyan(int light) { return light ? rgb(18, 144, 178) : rgb(76, 205, 218); }   // primary accent
+static inline uint32_t cyber_neon_yellow(int light) { return light ? rgb(215, 119, 36) : rgb(241, 167, 78); }   // highlight
+static inline uint32_t cyber_neon_purple(int light) { return light ? rgb(42, 151, 106) : rgb(65, 188, 137); }   // positive green
+static inline uint32_t cyber_text(int light) { return light ? rgb(29, 43, 48) : rgb(235, 244, 244); }
+static inline uint32_t cyber_text_muted(int light) { return light ? rgb(91, 111, 117) : rgb(157, 178, 181); }
+static inline uint32_t cyber_border(int light) { return light ? rgb(183, 202, 205) : rgb(54, 75, 80); }
+static inline uint32_t cyber_card_bg_top(int light) { return light ? rgb(252, 254, 254) : rgb(39, 53, 59); }
+static inline uint32_t cyber_card_bg_bot(int light) { return light ? rgb(235, 243, 244) : rgb(29, 41, 47); }
 
 static char g_code_buf[CODE_EDIT_CAP];
 static char g_code_output[CODE_OUTPUT_CAP];
@@ -1691,10 +1691,16 @@ static void draw_wallpaper(int w, int h, int light) {
 
     // Photographic wallpaper across the whole screen; panels float on top.
     blit_wallpaper(w, h);
+    // A restrained tint keeps text and window edges readable over bright photos.
+    rect_alpha(0, 0, w, tb_y, light ? 0x180F2B35 : 0x26000D16);
+    vgradient_alpha(0, 0, w, tb_y,
+                    light ? 0x180F2B35 : 0x2E001018,
+                    light ? 0x040F2B35 : 0x08000D16);
     // Windows 11-style floating taskbar bar (translucent glass); its centered
     // icon cluster + clock are drawn by draw_taskbar().
-    rect_alpha(0, tb_y, w, TASKBAR_H, light ? 0xF0E9EBEE : 0xEE20242A);
-    rect(0, tb_y, w, 1, light ? rgb(206, 210, 214) : rgb(58, 63, 70));
+    rect_alpha(0, tb_y, w, TASKBAR_H, light ? 0xEAF4F7F7 : 0xE91A2A31);
+    rect(0, tb_y, w, 1, light ? rgb(193, 216, 218) : rgb(67, 103, 108));
+    rect(0, tb_y + 1, w, 1, light ? rgb(224, 237, 238) : rgb(35, 57, 62));
 }
 
 static void draw_usage_bar(int x, int y, int w, int h, uint32_t used, uint32_t total, uint32_t color) {
@@ -6195,26 +6201,26 @@ static void draw_window_frame(int x, int y, int win_w, int win_h, const char *ti
         soft_shadow(x + 2, y + 3, win_w - 4, win_h - 4);  // deeper drop shadow
     }
 
-    uint32_t body_bg  = active ? (light ? rgb(239, 240, 241) : rgb(42, 46, 50))
-                               : (light ? rgb(239, 240, 241) : rgb(35, 38, 41));
-    uint32_t title_bg = active ? (light ? rgb(214, 217, 221) : rgb(49, 54, 59))
-                               : (light ? rgb(231, 233, 235) : rgb(38, 41, 44));
-    uint32_t border_c = active ? rgb(61, 174, 233)
-                               : (light ? rgb(188, 192, 196) : rgb(60, 64, 69));
+    uint32_t body_bg  = active ? (light ? rgb(243, 248, 248) : rgb(31, 45, 50))
+                               : (light ? rgb(237, 243, 244) : rgb(26, 37, 42));
+    uint32_t title_bg = active ? (light ? rgb(27, 112, 128) : rgb(37, 67, 73))
+                               : (light ? rgb(218, 231, 232) : rgb(31, 47, 52));
+    uint32_t border_c = active ? cyber_neon_cyan(light)
+                               : (light ? rgb(181, 204, 207) : rgb(55, 78, 83));
 
     // Rounded Breeze frame: rounded body, rounded-top titlebar, 1px separator,
     // focus border on the straight edges (corners carried by the AA fill).
     fill_round_rect(x, y, win_w, win_h, R, body_bg, RR_ALL);
     fill_round_rect(x, y, win_w, WM_TITLE_H, R, title_bg, RR_TOP);
-    rect(x + 1, y + WM_TITLE_H, win_w - 2, 1, light ? rgb(196, 200, 204) : rgb(60, 64, 69));
+    rect(x + 1, y + WM_TITLE_H, win_w - 2, 1, light ? rgb(190, 214, 216) : rgb(58, 84, 89));
     rect(x + R, y, win_w - 2 * R, 1, border_c);
     rect(x + R, y + win_h - 1, win_w - 2 * R, 1, border_c);
     rect(x, y + R, 1, win_h - 2 * R, border_c);
     rect(x + win_w - 1, y + R, 1, win_h - 2 * R, border_c);
 
     // Window controls: flat, close=red, min/max neutral (no accent strip).
-    uint32_t nbtn = active ? (light ? rgb(206, 209, 213) : rgb(66, 71, 77))
-                           : (light ? rgb(222, 224, 227) : rgb(54, 58, 63));
+    uint32_t nbtn = active ? (light ? rgb(43, 133, 145) : rgb(52, 83, 88))
+                           : (light ? rgb(205, 222, 223) : rgb(44, 64, 69));
     int btn_x = x + win_w - WM_BTN_W - 8;
     int btn_y = y + 7;
     draw_panel_shell(btn_x, btn_y, WM_BTN_W, 20,
@@ -6224,21 +6230,21 @@ static void draw_window_frame(int x, int y, int win_w, int win_h, const char *ti
 
     btn_x -= WM_BTN_W + WM_BTN_GAP;
     draw_panel_shell(btn_x, btn_y, WM_BTN_W, 20, nbtn, nbtn,
-                     light ? rgb(176, 180, 184) : rgb(60, 64, 69), 0);
+                     light ? rgb(167, 196, 198) : rgb(55, 81, 86), 0);
     draw_window_control_icon(btn_x + 6, btn_y + 4, GUI_CTRL_MAX,
                              state == WM_STATE_MAXIMIZED,
-                             light ? rgb(60, 64, 69) : rgb(236, 242, 240));
+                             light ? rgb(34, 76, 83) : rgb(224, 239, 237));
 
     btn_x -= WM_BTN_W + WM_BTN_GAP;
     draw_panel_shell(btn_x, btn_y, WM_BTN_W, 20, nbtn, nbtn,
-                     light ? rgb(176, 180, 184) : rgb(60, 64, 69), 0);
+                     light ? rgb(167, 196, 198) : rgb(55, 81, 86), 0);
     draw_window_control_icon(btn_x + 6, btn_y + 4, GUI_CTRL_MIN, 0,
-                             light ? rgb(60, 64, 69) : rgb(236, 242, 240));
+                             light ? rgb(34, 76, 83) : rgb(224, 239, 237));
 
     // Titlebar app icon (rounded accent square) + vertically-centered title.
     int ico = 14, icy = y + (WM_TITLE_H - ico) / 2;
-    uint32_t icon_c = active ? rgb(61, 174, 233)
-                             : (light ? rgb(150, 156, 162) : rgb(110, 118, 126));
+    uint32_t icon_c = active ? cyber_neon_cyan(light)
+                             : (light ? rgb(128, 164, 168) : rgb(92, 132, 136));
     fill_round_rect(x + 12, icy, ico, ico, 3, icon_c, RR_ALL);
     rect(x + 12 + 4, icy + 5, ico - 8, ico - 9, rgb(255, 255, 255));
     int tty = y + (WM_TITLE_H - gui_font_line_height()) / 2;
