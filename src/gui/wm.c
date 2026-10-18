@@ -175,6 +175,11 @@ void wm_resize_window(wm_state_t *wm, int idx, int w, int h) {
     if (!win->used || win->state == WM_STATE_MAXIMIZED) return;
     if (w < 200) w = 200;
     if (h < 120) h = 120;
+    int max_w = wm->desk_w > 0 ? wm->desk_w : w;
+    int max_h = wm->desk_h - WM_TASKBAR_H;
+    if (max_h < 120) max_h = 120;
+    if (w > max_w) w = max_w;
+    if (h > max_h) h = max_h;
     win->w = w;
     win->h = h;
 }
@@ -419,7 +424,7 @@ int wm_hit_maximize(wm_state_t *wm, int mx, int my) {
 
 int wm_hit_border(wm_state_t *wm, int mx, int my, int *edge) {
     *edge = WM_EDGE_NONE;
-    int bw = WM_BORDER_W + 4;
+    int bw = ui_s(8);
     for (int i = wm->window_count - 1; i >= 0; i--) {
         int idx = wm->z_order[i];
         if (wm->windows[idx].state != WM_STATE_NORMAL) continue;

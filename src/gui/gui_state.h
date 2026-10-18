@@ -8,11 +8,19 @@
 
 #define GUI_APP_NONE  -1
 #define GUI_APP_NOTES 0
+#define GUI_APP_CALC  1
 #define GUI_APP_UWC   2
 #define GUI_APP_SNAKE 3
 #define GUI_APP_BROWSER 4
 #define GUI_APP_CODE 5
 #define GUI_APP_DIAG 6
+#define GUI_APP_CLOCK 7
+#define GUI_APP_SETTINGS 8
+#define GUI_APP_FILES 9
+#define GUI_APP_TASKMGR 10
+#define GUI_APP_SHORTCUTS 11
+#define GUI_APP_IMGVIEW 12
+#define GUI_APP_HEXVIEW 13
 
 #define NOTE_EDIT_CAP 512
 #define BROWSER_URL_CAP 160

@@ -141,6 +141,35 @@ typedef hax_rect_t hive_window_rect_t;
 #define hive_window_poll_event    hax_window_poll
 #define hive_window_destroy       hax_window_close
 
+/* Versioned desktop settings ABI.  A no-GUI kernel returns -2. */
+#define HIVE_GUI_SETTINGS_QUERY 10u
+#define HIVE_GUI_SETTINGS_UPDATE 11u
+typedef struct {
+    HU32 struct_size;
+    HU16 abi_major, abi_minor;
+    HI32 theme, brightness, ui_scale, taskbar_show_seconds;
+    HU32 revision;
+    HU32 reserved[2];
+} hive_gui_settings_t;
+
+static inline int hive_gui_settings_call(HU32 operation,
+                                         hive_gui_settings_t *settings) {
+    if (!settings) return -1;
+    return (int)__syscall3(HBOS_SYS_WIN2, operation, 0, (long)settings);
+}
+
+static inline int hive_gui_settings_query(hive_gui_settings_t *settings) {
+    if (!settings) return -1;
+    memset(settings, 0, sizeof(*settings));
+    settings->struct_size = (HU32)sizeof(*settings);
+    settings->abi_major = 1; settings->abi_minor = 1;
+    return hive_gui_settings_call(HIVE_GUI_SETTINGS_QUERY, settings);
+}
+
+static inline int hive_gui_settings_update(hive_gui_settings_t *settings) {
+    return hive_gui_settings_call(HIVE_GUI_SETTINGS_UPDATE, settings);
+}
+
 static inline void hive_yield(void) {
     hax_sleep(0);
 }

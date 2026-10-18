@@ -33,6 +33,7 @@
 #include "../gui/gui_draw.h"
 #include "../gui/gui_app.h"
 #include "../gui/browser_backend.h"
+#include "../api/gui_service.h"
 
 /* app_imgview.c / app_hexview.c 各自路径 setter，供 gui_open_selected_file()
  * 打开对应查看器前写入要打开的文件路径 */
@@ -84,6 +85,42 @@ int ui_s(int v) { return v * g_ui_scale / 100; }
 #define CODE_CMD_GUI_RUN 4
 
 static uint32_t rgb(uint8_t r, uint8_t g, uint8_t b);
+
+#define GUI_SETTINGS_MAGIC 0x48534731u
+typedef struct {
+    uint32_t magic;
+    int32_t theme, brightness, ui_scale, taskbar_show_seconds;
+} gui_settings_file_t;
+
+static int gui_settings_load_file(gui_service_settings_t *settings) {
+    int fd = open("/hive-settings.bin", O_RDONLY);
+    if (fd < 0) return 0;
+    gui_settings_file_t stored;
+    long n = read(fd, &stored, sizeof(stored));
+    close(fd);
+    if (n != (long)sizeof(stored) || stored.magic != GUI_SETTINGS_MAGIC ||
+        stored.theme < GUI_THEME_LIGHT || stored.theme > GUI_THEME_DARK ||
+        stored.brightness < 20 || stored.brightness > 100 ||
+        stored.ui_scale < 70 || stored.ui_scale > 220 ||
+        (stored.taskbar_show_seconds != 0 && stored.taskbar_show_seconds != 1))
+        return 0;
+    settings->theme = stored.theme;
+    settings->brightness = stored.brightness;
+    settings->ui_scale = stored.ui_scale;
+    settings->taskbar_show_seconds = stored.taskbar_show_seconds;
+    return 1;
+}
+
+static void gui_settings_save_file(const gui_service_settings_t *settings) {
+    gui_settings_file_t stored = {
+        GUI_SETTINGS_MAGIC, settings->theme, settings->brightness,
+        settings->ui_scale, settings->taskbar_show_seconds
+    };
+    int fd = open("/hive-settings.bin", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return;
+    (void)write(fd, &stored, sizeof(stored));
+    close(fd);
+}
 
 // Palette — dark branch follows KDE Breeze Dark (cool grays, single blue accent
 // #3daee9). The historical cyber_* names are kept so call sites need no churn;
@@ -8658,6 +8695,19 @@ static void cmd_gui(int argc, char **argv) {
     g_ui_scale = h * 100 / 1080;
     if (g_ui_scale < 70)  g_ui_scale = 70;    /* 下限：避免过小 */
     if (g_ui_scale > 220) g_ui_scale = 220;   /* 上限：避免过大 */
+    gui_service_settings_t startup_settings;
+    memset(&startup_settings, 0, sizeof(startup_settings));
+    int settings_revision = 0;
+    if (gui_service_settings(0, GUI_SERVICE_SETTINGS_QUERY, &startup_settings) == 0) {
+        if (gui_settings_load_file(&startup_settings)) {
+            (void)gui_service_settings(0, GUI_SERVICE_SETTINGS_UPDATE,
+                                       &startup_settings);
+            (void)gui_service_settings(0, GUI_SERVICE_SETTINGS_QUERY,
+                                       &startup_settings);
+        }
+        g_ui_scale = startup_settings.ui_scale;
+        settings_revision = (int)startup_settings.revision;
+    }
     {
         int nb = gui_font_base_count();
         if (nb > 1) {
@@ -8682,6 +8732,7 @@ static void cmd_gui(int argc, char **argv) {
     int drag_pending = 0;
     int appwin_drag = -1;        /* 正在拖动的应用窗口 id（winsrv） */
     int appwin_drag_dx = 0, appwin_drag_dy = 0;
+    int appwin_snap_hint = WM_SNAP_NONE;
     int appwin_mouse_capture = -1; /* 内容区按下后持续接收移动与松开 */
     int appwin_mouse_hover = -1;   /* 上次收到悬停事件的应用窗口 */
     int appwin_focus = -1;         /* 键盘焦点窗口；不再假定最高槽位 */
@@ -8715,6 +8766,11 @@ static void cmd_gui(int argc, char **argv) {
     st.delete_confirm_index = -1;
     st.taskbar_show_seconds = 1;
     st.brightness = 100;
+    if (startup_settings.struct_size == sizeof(startup_settings) && settings_revision) {
+        st.theme_light = startup_settings.theme == GUI_THEME_LIGHT;
+        st.taskbar_show_seconds = startup_settings.taskbar_show_seconds;
+        st.brightness = startup_settings.brightness;
+    }
     gui_set_brightness(st.brightness);
     st.status = "就绪";
     wm_init(&st.wm, w, h);
@@ -8778,6 +8834,37 @@ static void cmd_gui(int argc, char **argv) {
     gui_dirty_mark_full();
     draw_gui_frame(&fb, w, h, &st, mx, my, cursor_edge);
     while (1) {
+        gui_service_settings_t live_settings;
+        if (gui_service_settings(0, GUI_SERVICE_SETTINGS_QUERY, &live_settings) == 0 &&
+            (int)live_settings.revision != settings_revision) {
+            settings_revision = (int)live_settings.revision;
+            int old_scale = g_ui_scale;
+            if (old_scale < 1) old_scale = 100;
+            st.theme_light = live_settings.theme == GUI_THEME_LIGHT;
+            st.taskbar_show_seconds = live_settings.taskbar_show_seconds;
+            st.brightness = live_settings.brightness;
+            g_ui_scale = live_settings.ui_scale;
+            gui_settings_save_file(&live_settings);
+            gui_set_brightness(st.brightness);
+            if (old_scale != g_ui_scale) {
+                for (int wi = 0; wi < st.wm.window_count; wi++) {
+                    wm_window_t *win = wm_get_window(&st.wm, wi);
+                    if (!win) continue;
+                    win->x = win->x * g_ui_scale / old_scale;
+                    win->y = win->y * g_ui_scale / old_scale;
+                    win->w = win->w * g_ui_scale / old_scale;
+                    win->h = win->h * g_ui_scale / old_scale;
+                    win->prev_x = win->prev_x * g_ui_scale / old_scale;
+                    win->prev_y = win->prev_y * g_ui_scale / old_scale;
+                    win->prev_w = win->prev_w * g_ui_scale / old_scale;
+                    win->prev_h = win->prev_h * g_ui_scale / old_scale;
+                    if (win->w > w) win->w = w;
+                    if (win->h > h - WM_TASKBAR_H) win->h = h - WM_TASKBAR_H;
+                    wm_move_window(&st.wm, wi, win->x, win->y);
+                }
+            }
+            gui_dirty_mark_full();
+        }
         /* 回收已退出应用留下的窗口 */
         if (winsrv_reap_dead() > 0) gui_dirty_mark_full();
 
@@ -8797,6 +8884,36 @@ static void cmd_gui(int argc, char **argv) {
         wm_update_animations(&st.wm);
 
         int key = key_poll();
+        if (key == '\t' && kb_alt_pressed()) {
+            int next_app = -1;
+            for (int step = 1; step <= WINSRV_MAX; step++) {
+                int candidate = (appwin_focus + step + WINSRV_MAX) % WINSRV_MAX;
+                winsrv_window_t *win = winsrv_get(candidate);
+                if (win && win->state != WINSRV_STATE_MINIMIZED) {
+                    next_app = candidate;
+                    break;
+                }
+            }
+            if (next_app >= 0) {
+                winsrv_window_t *old = winsrv_get(appwin_focus);
+                if (old && appwin_focus != next_app) {
+                    old->focused = 0;
+                    winsrv_push_event(old, WINEV_FOCUS, 0, 0, 0);
+                }
+                appwin_focus = next_app;
+                winsrv_window_t *focused = winsrv_get(next_app);
+                if (focused) {
+                    focused->focused = 1;
+                    winsrv_push_event(focused, WINEV_FOCUS, 1, 0, 0);
+                }
+            } else if (st.wm.window_count > 0) {
+                wm_focus_next(&st.wm, 1);
+                gui_sync_focus(&st);
+            }
+            gui_dirty_mark_full();
+            draw_gui_frame(&fb, w, h, &st, mx, my, cursor_edge);
+            continue;
+        }
         /* F1: toggle the start menu (keyboard-only path to every app --
          * previously mouse-only via the taskbar logo / right-click menu;
          * once open, typing filters and Enter launches, see below). */
@@ -9065,15 +9182,43 @@ static void cmd_gui(int argc, char **argv) {
                     win->x = mx - appwin_drag_dx;
                     win->y = my - appwin_drag_dy;
                     if (win->y < APPWIN_TITLE_H) win->y = APPWIN_TITLE_H;
-                    if (win->x < 0) win->x = 0;
-                    if (win->x > w - 40) win->x = w - 40;
+                    int keep = ui_s(80);
+                    if (win->x < keep - win->w) win->x = keep - win->w;
+                    if (win->x > w - keep) win->x = w - keep;
+                    if (my <= ui_s(4)) appwin_snap_hint = WM_SNAP_TOP;
+                    else if (mx <= ui_s(4)) appwin_snap_hint = WM_SNAP_LEFT;
+                    else if (mx >= w - ui_s(5)) appwin_snap_hint = WM_SNAP_RIGHT;
+                    else appwin_snap_hint = WM_SNAP_NONE;
+                    st.snap_preview = appwin_snap_hint;
                     redraw = 1;
                 } else {
                     winsrv_window_t *ended = winsrv_get(appwin_drag);
-                    if (ended)
+                    if (ended) {
+                        if (appwin_snap_hint == WM_SNAP_TOP) {
+                            ended->x = 0; ended->y = APPWIN_TITLE_H;
+                            int snap_w = w < WINSRV_MAX_W ? w : WINSRV_MAX_W;
+                            ended->w = snap_w;
+                            winsrv_resize(ended, snap_w, h - TASKBAR_H - APPWIN_TITLE_H);
+                            ended->state = WINSRV_STATE_MAXIMIZED;
+                            winsrv_push_event(ended, WINEV_STATE, WINSRV_STATE_MAXIMIZED, 0, 0);
+                        } else if (appwin_snap_hint == WM_SNAP_LEFT ||
+                                   appwin_snap_hint == WM_SNAP_RIGHT) {
+                            int half = w / 2;
+                            if (half > WINSRV_MAX_W) half = WINSRV_MAX_W;
+                            ended->x = appwin_snap_hint == WM_SNAP_LEFT ? 0 : w - half;
+                            ended->y = APPWIN_TITLE_H;
+                            ended->w = half;
+                            winsrv_resize(ended, half, h - TASKBAR_H - APPWIN_TITLE_H);
+                            ended->state = WINSRV_STATE_NORMAL;
+                            winsrv_push_event(ended, WINEV_STATE, WINSRV_STATE_NORMAL, 0, 0);
+                        }
                         winsrv_push_event(ended, WINEV_MOVE,
                                           ended->x, ended->y, 0);
+                    }
                     appwin_drag = -1;
+                    appwin_snap_hint = WM_SNAP_NONE;
+                    st.snap_preview = WM_SNAP_NONE;
+                    redraw = 1;
                 }
             }
 
@@ -9092,6 +9237,7 @@ static void cmd_gui(int argc, char **argv) {
                     if (resize_edge == WM_EDGE_W || resize_edge == WM_EDGE_NW || resize_edge == WM_EDGE_SW)
                         new_w = resize_orig_w - dx;
                     if (new_w < 200) new_w = 200;
+                    if (new_w > w) new_w = w;
 
                     if (resize_edge == WM_EDGE_W || resize_edge == WM_EDGE_NW || resize_edge == WM_EDGE_SW)
                         new_x = (resize_orig_win_x + resize_orig_w) - new_w;
@@ -9101,14 +9247,19 @@ static void cmd_gui(int argc, char **argv) {
                     if (resize_edge == WM_EDGE_N || resize_edge == WM_EDGE_NE || resize_edge == WM_EDGE_NW)
                         new_h = resize_orig_h - dy;
                     if (new_h < 120) new_h = 120;
+                    if (new_h > h - TASKBAR_H) new_h = h - TASKBAR_H;
 
                     if (resize_edge == WM_EDGE_N || resize_edge == WM_EDGE_NE || resize_edge == WM_EDGE_NW)
                         new_y = (resize_orig_win_y + resize_orig_h) - new_h;
 
-                    rw->w = new_w;
-                    rw->h = new_h;
+                    wm_resize_window(&st.wm, resizing_window, new_w, new_h);
                     rw->x = new_x;
                     rw->y = new_y;
+                    if (rw->x < 0) rw->x = 0;
+                    if (rw->y < 0) rw->y = 0;
+                    if (rw->x + rw->w > w) rw->x = w - rw->w;
+                    if (rw->y + rw->h > h - TASKBAR_H)
+                        rw->y = h - TASKBAR_H - rw->h;
                     redraw = 1;
                     st.status = "调整窗口大小";
                 }
