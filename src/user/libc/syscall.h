@@ -4,6 +4,20 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define HBOS_WEB_FETCH_VERSION 1U
+#define HBOS_WEB_FETCH_HTTPS   0x01U
+
+typedef struct {
+    uint32_t version;
+    uint32_t flags;
+    const char *host;
+    const char *path;
+    char *output;
+    uint32_t output_capacity;
+    uint16_t port;
+    uint16_t reserved;
+} hbos_web_fetch_request_t;
+
 typedef long ssize_t;
 typedef long off_t;
 typedef int pid_t;
@@ -46,9 +60,15 @@ struct stat {
 #define O_RDONLY  0
 #define O_WRONLY  1
 #define O_RDWR    2
+#define O_ACCMODE  3
 #define O_CREAT   0100
+#define O_EXCL    0200
 #define O_TRUNC   01000
 #define O_APPEND  02000
+#define O_NONBLOCK 04000
+#define O_DIRECTORY 0200000
+#define O_NOFOLLOW  0400000
+#define O_CLOEXEC  02000000
 
 #define SEEK_SET 0
 #define SEEK_CUR 1
@@ -154,6 +174,46 @@ enum {
     HBOS_SYS_WIN2,
     HBOS_SYS_WIN_BLIT,
     HBOS_SYS_HTTPS_GET,
+    HBOS_SYS_HTTPS_GET_V2,
+    HBOS_SYS_POLL,
+    HBOS_SYS_PIPE2,
+    HBOS_SYS_EVENTFD2,
+    HBOS_SYS_EPOLL_CREATE1,
+    HBOS_SYS_EPOLL_CTL,
+    HBOS_SYS_EPOLL_WAIT,
+    HBOS_SYS_SCHED_YIELD,
+    HBOS_SYS_GETRANDOM,
+    HBOS_SYS_FUTEX,
+    HBOS_SYS_ARCH_PRCTL,
+    HBOS_SYS_CLONE_THREAD,
+    HBOS_SYS_SET_TID_ADDRESS,
+    HBOS_SYS_SOCKETPAIR,
+    HBOS_SYS_GETSOCKOPT,
+    HBOS_SYS_SETSOCKOPT,
+    HBOS_SYS_SHUTDOWN,
+    HBOS_SYS_MEMFD_CREATE,
+    HBOS_SYS_SENDMSG,
+    HBOS_SYS_RECVMSG,
+    HBOS_SYS_SET_ROBUST_LIST,
+    HBOS_SYS_GET_ROBUST_LIST,
+    HBOS_SYS_DLINIT_NEXT,
+    HBOS_SYS_DLFINI_NEXT,
+    HBOS_SYS_DLTLS_GET,
+    HBOS_SYS_DLIFUNC_NEXT,
+    HBOS_SYS_DLIFUNC_APPLY,
+    HBOS_SYS_RENAME,
+    HBOS_SYS_GETSOCKNAME,
+    HBOS_SYS_GETPEERNAME,
+    HBOS_SYS_WEB_FETCH,
+    HBOS_SYS_DNS_RESOLVE,
+    HBOS_SYS_TIMERFD_CREATE,
+    HBOS_SYS_TIMERFD_SETTIME,
+    HBOS_SYS_TIMERFD_GETTIME,
+    HBOS_SYS_STATFS,
+    HBOS_SYS_FSTATFS,
+    HBOS_SYS_SCHED_GETAFFINITY,
+    HBOS_SYS_SIGNALFD,
+    HBOS_SYS_MREMAP,
 };
 
 long __syscall6(long nr, long a0, long a1, long a2, long a3, long a4, long a5);

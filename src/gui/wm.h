@@ -110,6 +110,7 @@ typedef struct {
     int start_menu_open;
     int menu_x, menu_y, menu_w, menu_h;
     int desk_w, desk_h;
+    int top_bar_h;
 } wm_state_t;
 
 void wm_init(wm_state_t *wm, int desk_w, int desk_h);

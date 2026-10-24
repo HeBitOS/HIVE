@@ -24,9 +24,6 @@ enum {
     GUI_SERVICE_V2_PRESENT,
     GUI_SERVICE_V2_POLL,
     GUI_SERVICE_V2_CLOSE,
-    /* System settings use the same stable service entry point but no window
-     * handle.  Keeping these values after the window operations preserves the
-     * existing ABI numbering. */
     GUI_SERVICE_SETTINGS_QUERY = 10,
     GUI_SERVICE_SETTINGS_UPDATE = 11,
 };
@@ -104,19 +101,15 @@ typedef struct {
     uint32_t reserved[2];
 } gui_service_event_t;
 
-enum {
-    GUI_THEME_LIGHT = 0,
-    GUI_THEME_DARK = 1,
-};
-
+enum { GUI_THEME_LIGHT = 0, GUI_THEME_DARK = 1 };
 typedef struct {
     uint32_t struct_size;
     uint16_t abi_major, abi_minor;
-    int32_t theme;                 /* GUI_THEME_* */
-    int32_t brightness;            /* 20..100 percent */
-    int32_t ui_scale;              /* 70..220 percent */
-    int32_t taskbar_show_seconds;  /* 0 or 1 */
-    uint32_t revision;              /* increments after an update */
+    int32_t theme;
+    int32_t brightness;
+    int32_t ui_scale;
+    int32_t taskbar_show_seconds;
+    uint32_t revision;
     uint32_t reserved[2];
 } gui_service_settings_t;
 
@@ -144,10 +137,11 @@ void gui_service_window_close(uint32_t owner_task);
 /** HIVE 窗口 ABI v2：显式句柄、多窗口、批量绘制和版本化结构体。 */
 int gui_service_window_v2(uint32_t owner_task, uint32_t operation,
                           int handle, void *data);
-
-/* Query/update process-independent desktop settings.  Returns 0 on success,
- * -2 when the GUI service is unavailable, and -1 for malformed values. */
 int gui_service_settings(uint32_t owner_task, uint32_t operation,
                          gui_service_settings_t *settings);
+/** 便捷入口：只改主题（其余设置保留原值）。桌面 shell 的 F4 / 右键菜单 /
+ * 设置应用切换主题时必须走这里——过去它们只改 shell 内部的 theme_light，
+ * 从不通知 service，跟随 service 的 HAX 应用窗口就会和桌面主题脱节。 */
+int gui_service_theme_set(int light);
 
 #endif /* HBOS_API_GUI_SERVICE_H */

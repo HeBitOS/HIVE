@@ -144,6 +144,8 @@ typedef struct gui_state {
     int taskbar_show_seconds;  /* 任务栏时钟是否显示秒数，默认开启 */
     int brightness;            /* 屏幕亮度 20..100，默认 100 */
     int brightness_popup_open; /* 任务栏亮度滑杆弹窗是否打开 */
+    int quick_settings_open;   /* GNOME 快捷设置控制中心弹窗是否打开 */
+    int ov_selected;           /* 概览中键盘当前选中的窗口索引 */
     char console_input[120];
     uint32_t console_input_len;
     char console_history[64][120];

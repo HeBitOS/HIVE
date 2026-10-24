@@ -22,7 +22,10 @@ override GUI_C_SRCS = \
 	$(HIVE_SRC_DIR)/gui/compositor.c \
 	$(HIVE_SRC_DIR)/gui/effects.c \
 	$(HIVE_SRC_DIR)/gui/gui_dirty.c \
-	$(HIVE_SRC_DIR)/gui/browser_backend.c
+	$(HIVE_SRC_DIR)/gui/browser_backend.c \
+	$(SRC_DIR)/gui/desktop_entry.c \
+	$(SRC_DIR)/gui/app_registry.c \
+	$(SRC_DIR)/gui/glass.c
 
 override HBOS_C_SRCS = $(filter-out $(HIVE_SRC_DIR)/%,$(C_SRCS))
 override HIVE_C_SRCS = $(filter $(HIVE_SRC_DIR)/%,$(C_SRCS))

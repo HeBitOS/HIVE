@@ -24,16 +24,7 @@ static void layout(hive_ui_t *ui, int width, int height) {
 }
 
 static void apply_theme(hive_ui_t *ui, int dark) {
-    ui->theme = hive_dark_theme();
-    if (!dark) {
-        ui->theme.window_bg = 0xEFF1F3;
-        ui->theme.panel_bg = 0xFFFFFF;
-        ui->theme.panel_alt = 0xE2E6EA;
-        ui->theme.border = 0xAEB6BF;
-        ui->theme.text = 0x232629;
-        ui->theme.text_dim = 0x626B73;
-        ui->theme.accent_text = 0xFFFFFF;
-    }
+    ui->theme = dark ? hive_dark_theme() : hive_light_theme();
 }
 
 int main(int argc, char **argv) {

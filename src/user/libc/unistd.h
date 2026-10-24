@@ -2,6 +2,7 @@
 #define HBOS_USER_LIBC_UNISTD_H
 
 #include <stddef.h>
+#include "syscall.h"
 
 #define F_OK 0
 #define R_OK 4
@@ -16,21 +17,22 @@
 #define SEEK_CUR 1
 #define SEEK_END 2
 
-typedef int pid_t;
-typedef long ssize_t;
-typedef long off_t;
-
 unsigned int sleep(unsigned int seconds);
 int          usleep(unsigned int useconds);
 pid_t        getpid(void);
 char        *getcwd(char *buf, size_t size);
+int          chdir(const char *path);
 int          unlink(const char *path);
+int          symlink(const char *target, const char *linkpath);
+ssize_t      readlink(const char *path, char *buf, size_t bufsiz);
 
 ssize_t      read(int fd, void *buf, size_t count);
 ssize_t      write(int fd, const void *buf, size_t count);
 off_t        lseek(int fd, off_t offset, int whence);
+int          ftruncate(int fd, off_t length);
 int          close(int fd);
 int          rmdir(const char *path);
+int          pipe2(int pipefd[2], int flags);
 
 /* Real exec — see unistd.c: on success this never returns (the calling
  * task is replaced/terminated by the kernel), -1 on failure. */
@@ -40,12 +42,8 @@ int          execvp(const char *file, char *const argv[]);
 int          access(const char *path, int mode);
 int          isatty(int fd);
 
-/* HBOS has no true in-place VFS rename (ramfs/ext2/fat32 have no "just
- * relink this node under a new name" primitive) -- always reports EXDEV
- * ("cross-device"), which every real mv implementation (including
- * BusyBox's) already treats as "fall back to copy + delete", so this
- * still gets a correct (if less efficient) mv for every case rather than
- * needing real move-in-place support. */
+/* Same-filesystem file rename.  ramfs/HBFS relink metadata in place;
+ * ext2/FAT32 currently use the filesystem copy/delete fallback. */
 int          rename(const char *oldpath, const char *newpath);
 
 /* HBOS-specific: HBOS's "programs" are .hax apps looked up by name in an
@@ -54,6 +52,19 @@ int          rename(const char *oldpath, const char *newpath);
  * tools (which, executable_exists()) must ask the kernel directly whether
  * a name is a known app rather than stat()'ing a path. Returns 1 if found,
  * 0 otherwise. */
+/* Multi-user identity.  HBOS now carries per-task uid/gid/euid/egid and
+ * supplementary groups; getuid()/setuid() etc. round-trip through the
+ * kernel's native syscall table. */
+uid_t        getuid(void);
+uid_t        geteuid(void);
+gid_t        getgid(void);
+gid_t        getegid(void);
+int          setuid(uid_t uid);
+int          setgid(gid_t gid);
+int          getgroups(int size, gid_t list[]);
+int          setgroups(int size, const gid_t list[]);
+pid_t        getpgid(pid_t pid);
+
 int          hax_app_exists(const char *name);
 
 #endif
